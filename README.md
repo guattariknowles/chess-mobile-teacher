@@ -1,8 +1,14 @@
-# 自由象棋
+# Free Chess
 
-自由象棋是一款面向初学者和本地双人对弈的 Android 国际象棋应用。
+Free Chess 是一款面向初学者和本地双人对弈的 Android 国际象棋应用。
 
 项目坚持离线优先、无广告、无账号、无追踪，不依赖付费 API 或云端模型。当前版本专注于稳定的标准国际象棋规则、棋钟和面对面双人操作。
+
+## 开发与维护声明
+
+本项目完全由 Codex 开发，并由 Gemini 3.5 Flash 和 GPT-5.5 辅助。项目所有者仅负责提出需求和审核成品，不负责编程、错误处理、问题排查或需求解决。
+
+本项目不提供人工技术支持。遇到安装、运行、修改或二次开发问题时，请自行查阅项目文档、提交 GitHub Issue，或询问你信任的大语言模型。
 
 ## 当前功能
 
@@ -42,8 +48,8 @@ npm run android
 
 ## 下载 Android 测试版
 
-- [GitHub Releases](https://github.com/guattariknowles/chess-mobile-teacher/releases)
-- [直接下载自由象棋 1.1.0 APK](https://github.com/guattariknowles/chess-mobile-teacher/releases/download/v1.1.0/free-chess-1.1.0-2026-06-11-eas.apk)
+- [GitHub Releases](https://github.com/guattariknowles/free-chess/releases)
+- [直接下载 Free Chess 1.1.0 APK](https://github.com/guattariknowles/free-chess/releases/download/v1.1.0/free-chess-1.1.0-2026-06-11-eas.apk)
 
 `1.1.0` 的 SHA-256：
 

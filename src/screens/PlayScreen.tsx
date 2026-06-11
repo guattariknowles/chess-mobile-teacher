@@ -468,7 +468,7 @@ export function PlayScreen() {
       >
         <View style={styles.header}>
           <View>
-            <Text style={styles.title}>自由象棋</Text>
+            <Text style={styles.title}>Free Chess</Text>
             <Text style={styles.subtitle}>
               {getClockConfigLabel(clockConfig)} · 已走 {snapshot.moveCount} 步
             </Text>
