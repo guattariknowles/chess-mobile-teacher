@@ -23,19 +23,20 @@
 - Android 包名：`com.knowles.freechess`
 - 应用版本：`1.1.0`
 - Android 版本号：`2`
-- 构建方式：本机 Gradle release
+- 构建方式：本机 Gradle release、EAS preview
 - 本地文件：`builds/free-chess-1.1.0-2026-06-11.apk`
 - 文件大小：`67,570,557` 字节
 - SHA-256：`1AB44A3BC980DC02EABC0064DEA74B6154C3719EF8F6434117D270740CE6FF15`
-- EAS preview：尚未同步
+- EAS 构建 ID：`0b0e6adc-9909-4de4-b22c-e40b5239126b`
+- EAS 下载链接：`https://expo.dev/artifacts/eas/vDXfAFIkjFX_PEhylJii8Uz9BX2d15ZL6ws05pFAr1I.apk`
+- EAS 本地备份：`builds/free-chess-1.1.0-2026-06-11-eas.apk`
+- EAS SHA-256：`4E09EA919B77701F5F0F40C767A781185B86701A7C0E3109EA219144C147A015`
 
 ## 安装说明
 
-- 旧版 `1.0.0` 使用 EAS 云端签名。
-- 新版 `1.1.0` 使用本机测试签名。
-- 两个版本签名不同，Android 不允许直接覆盖安装。
-- 安装 `1.1.0` 前需要先卸载旧版。
-- 当前版本尚未保存棋谱或用户资料，因此卸载旧版不会丢失这类数据。
+- 推荐安装 EAS 版 `1.1.0`，它与 EAS 版 `1.0.0` 使用同一签名，可以直接覆盖更新。
+- 本机测试版 `1.1.0` 使用不同签名，不能覆盖 EAS 版本；安装它之前需要先卸载旧版。
+- 当前版本尚未保存棋谱或用户资料，因此需要卸载时不会丢失这类数据。
 
 ## 验收结果
 
