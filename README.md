@@ -40,6 +40,17 @@ npm run android
 
 完整计划见 [ROADMAP.md](ROADMAP.md)。
 
+## 下载 Android 测试版
+
+- [GitHub Releases](https://github.com/guattariknowles/chess-mobile-teacher/releases)
+- [直接下载自由象棋 1.1.0 APK](https://github.com/guattariknowles/chess-mobile-teacher/releases/download/v1.1.0/free-chess-1.1.0-2026-06-11-eas.apk)
+
+`1.1.0` 的 SHA-256：
+
+```text
+4E09EA919B77701F5F0F40C767A781185B86701A7C0E3109EA219144C147A015
+```
+
 ## 隐私与联网
 
 - 对局数据默认只保存在本机。
