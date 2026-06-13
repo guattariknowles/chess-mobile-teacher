@@ -1,8 +1,9 @@
-import { Chess, type Square } from 'chess.js';
+import { Chess, type Color, type Square } from 'chess.js';
 
 export type LessonCategory =
   | 'basics'
   | 'openings'
+  | 'classics'
   | 'strategy'
   | 'endgames';
 
@@ -26,19 +27,41 @@ export type InteractiveLessonStep = {
   incorrectFeedback: string;
   instruction: string;
   opponent?: InteractiveLessonOpponent;
+  transition?: {
+    fen: string;
+    message: string;
+  };
 };
 
 export type InteractiveLesson = {
   completion: string;
+  freePlay?: {
+    difficulty: InteractiveLessonOpponent['difficulty'];
+  };
   goal: string;
+  humanColor?: Color;
+  initialOpponent?: InteractiveLessonOpponent;
   intro: string;
   startFen: string;
   steps: InteractiveLessonStep[];
 };
 
+export type LessonTrainingData = {
+  format: 'challenge' | 'classic-game' | 'guided';
+  objectives: string[];
+  source: 'built-in' | 'imported';
+  standardStart: boolean;
+  tags: string[];
+};
+
 export type ChessLesson = {
   category: LessonCategory;
   fen: string;
+  historical?: {
+    event: string;
+    players: string;
+    year: number;
+  };
   id: string;
   interactive?: InteractiveLesson;
   level: '入门' | '基础' | '进阶';
@@ -53,18 +76,105 @@ export type ChessLesson = {
   };
   summary: string;
   title: string;
+  training: LessonTrainingData;
   why: string;
+};
+
+type LessonDefinition = Omit<ChessLesson, 'training'> & {
+  training?: Partial<Omit<LessonTrainingData, 'standardStart'>>;
 };
 
 export const LESSON_CATEGORY_LABELS: Record<LessonCategory, string> = {
   basics: '规则基础',
   openings: '常见开局',
+  classics: '经典名局',
   strategy: '中局思路',
   endgames: '残局基础',
 };
 
-const START_FEN =
+export const START_FEN =
   'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+type GuidedLineStep = {
+  explanation: string;
+  from: Square;
+  hint: string;
+  id: string;
+  instruction: string;
+  response?: InteractiveLessonMove;
+  to: Square;
+};
+
+function createLineInteractive({
+  completion,
+  goal,
+  intro,
+  steps,
+}: {
+  completion: string;
+  goal: string;
+  intro: string;
+  steps: GuidedLineStep[];
+}): InteractiveLesson {
+  return {
+    completion,
+    goal,
+    intro,
+    startFen: START_FEN,
+    steps: steps.map((step) => ({
+      acceptedMoves: [{ from: step.from, to: step.to }],
+      explanation: step.explanation,
+      hint: step.hint,
+      id: step.id,
+      incorrectFeedback: `这一步还没有完成当前目标。${step.hint}`,
+      instruction: step.instruction,
+      opponent: step.response
+        ? {
+            allowedMoves: [step.response],
+            difficulty: 'intermediate',
+            mode: 'local-ai',
+          }
+        : undefined,
+    })),
+  };
+}
+
+function createFoundationSteps(): InteractiveLessonStep[] {
+  return createLineInteractive({
+    completion: '',
+    goal: '',
+    intro: '',
+    steps: [
+      {
+        explanation: 'e4 争夺中心，并打开后和王翼象的线路。',
+        from: 'e2',
+        hint: '把 e2 兵走到 e4。',
+        id: 'foundation-center',
+        instruction: '基础开局第一步：用王前兵争夺中心。',
+        response: { from: 'e7', to: 'e5' },
+        to: 'e4',
+      },
+      {
+        explanation: 'Nf3 发展马，并攻击黑方 e5 兵。',
+        from: 'g1',
+        hint: '把 g1 的马发展到 f3。',
+        id: 'foundation-knight',
+        instruction: '基础开局第二步：发展王翼马。',
+        response: { from: 'b8', to: 'c6' },
+        to: 'f3',
+      },
+      {
+        explanation: 'Bc4 发展象，并关注黑方较薄弱的 f7。',
+        from: 'f1',
+        hint: '把 f1 的象发展到 c4。',
+        id: 'foundation-bishop',
+        instruction: '基础开局第三步：发展王翼象。',
+        response: { from: 'g8', to: 'f6' },
+        to: 'c4',
+      },
+    ],
+  }).steps;
+}
 
 const ITALIAN_INTERACTIVE: InteractiveLesson = {
   completion:
@@ -172,7 +282,519 @@ const KING_PAWN_INTERACTIVE: InteractiveLesson = {
   ],
 };
 
-const LESSON_CATALOG: ChessLesson[] = [
+const RUY_LOPEZ_INTERACTIVE = createLineInteractive({
+  completion: '你从标准初始局面走出了西班牙开局，并理解了 Bb5 的牵制目标。',
+  goal: '走出 1.e4 e5 2.Nf3 Nc6 3.Bb5。',
+  intro: '由你执白，离线 AI 按西班牙开局的基础主线回应。',
+  steps: [
+    {
+      explanation: 'e4 先争夺中心。',
+      from: 'e2',
+      hint: '先走王前兵两格。',
+      id: 'ruy-center',
+      instruction: '先占据中心并打开王翼象。',
+      response: { from: 'e7', to: 'e5' },
+      to: 'e4',
+    },
+    {
+      explanation: 'Nf3 发展马并攻击 e5。',
+      from: 'g1',
+      hint: '发展能攻击 e5 的马。',
+      id: 'ruy-knight',
+      instruction: '发展王翼马，给黑方中心施压。',
+      response: { from: 'b8', to: 'c6' },
+      to: 'f3',
+    },
+    {
+      explanation: 'Bb5 牵制 c6 马，间接增加 e5 兵的防守压力。',
+      from: 'f1',
+      hint: '把 f1 象放到 b5。',
+      id: 'ruy-pin',
+      instruction: '用象牵制保护 e5 的 c6 马。',
+      to: 'b5',
+    },
+  ],
+});
+
+const QUEENS_GAMBIT_INTERACTIVE = createLineInteractive({
+  completion: '你从初始局面用 c 兵挑战了黑方 d5 中心兵。',
+  goal: '走出 1.d4 d5 2.c4。',
+  intro: '由你执白，离线 AI 配合展示后翼弃兵的基本结构。',
+  steps: [
+    {
+      explanation: 'd4 占据中心，并为 c4 的侧面挑战做准备。',
+      from: 'd2',
+      hint: '先把 d2 兵走到 d4。',
+      id: 'qg-center',
+      instruction: '先用后前兵占据中心。',
+      response: { from: 'd7', to: 'd5' },
+      to: 'd4',
+    },
+    {
+      explanation: 'c4 用侧翼兵直接挑战黑方的中心兵。',
+      from: 'c2',
+      hint: '用 c2 兵攻击 d5。',
+      id: 'qg-challenge',
+      instruction: '现在用侧翼兵挑战黑方中心。',
+      to: 'c4',
+    },
+  ],
+});
+
+const LONDON_INTERACTIVE = createLineInteractive({
+  completion: '你从标准初始局面完成了伦敦体系最有代表性的三步布局。',
+  goal: '走出 1.d4 d5 2.Nf3 Nf6 3.Bf4。',
+  intro: '由你执白，离线 AI 帮你练习伦敦体系的基础出子顺序。',
+  steps: [
+    {
+      explanation: 'd4 建立中心立足点。',
+      from: 'd2',
+      hint: '先走 d 兵两格。',
+      id: 'london-center',
+      instruction: '先建立后兵中心。',
+      response: { from: 'd7', to: 'd5' },
+      to: 'd4',
+    },
+    {
+      explanation: 'Nf3 发展马并支持中心。',
+      from: 'g1',
+      hint: '把 g1 马发展到 f3。',
+      id: 'london-knight',
+      instruction: '发展王翼马。',
+      response: { from: 'g8', to: 'f6' },
+      to: 'f3',
+    },
+    {
+      explanation: 'Bf4 先把后翼象发展到兵链外面。',
+      from: 'c1',
+      hint: '把 c1 象走到 f4。',
+      id: 'london-bishop',
+      instruction: '在走 e3 前先发展后翼象。',
+      to: 'f4',
+    },
+  ],
+});
+
+const SICILIAN_INTERACTIVE = createLineInteractive({
+  completion: '你从初始局面进入西西里防御，并用 Nf3 为 d4 做准备。',
+  goal: '走出 1.e4 c5 2.Nf3。',
+  intro: '离线 AI 执黑选择西西里防御，你练习白方的基础应对。',
+  steps: [
+    {
+      explanation: 'e4 占据中心；黑方用 c5 从侧面反击。',
+      from: 'e2',
+      hint: '先走 e2-e4。',
+      id: 'sicilian-center',
+      instruction: '用王前兵占据中心。',
+      response: { from: 'c7', to: 'c5' },
+      to: 'e4',
+    },
+    {
+      explanation: 'Nf3 发展马，并为下一步 d4 打开准备。',
+      from: 'g1',
+      hint: '把 g1 马发展到 f3。',
+      id: 'sicilian-develop',
+      instruction: '发展马，为打开中心做准备。',
+      to: 'f3',
+    },
+  ],
+});
+
+const FRENCH_INTERACTIVE = createLineInteractive({
+  completion: '你从初始局面建立了应对法兰西防御的双兵中心。',
+  goal: '走出 1.e4 e6 2.d4。',
+  intro: '离线 AI 执黑选择法兰西防御，你练习白方建立中心。',
+  steps: [
+    {
+      explanation: 'e4 先占中心；黑方用 e6 准备 ...d5。',
+      from: 'e2',
+      hint: '先走 e2-e4。',
+      id: 'french-center',
+      instruction: '先占据 e4。',
+      response: { from: 'e7', to: 'e6' },
+      to: 'e4',
+    },
+    {
+      explanation: 'd4 建立双兵中心，并准备正面应对 ...d5。',
+      from: 'd2',
+      hint: '把 d2 兵走到 d4。',
+      id: 'french-space',
+      instruction: '用另一个中心兵扩大空间。',
+      to: 'd4',
+    },
+  ],
+});
+
+const SCOTCH_INTERACTIVE = createLineInteractive({
+  completion: '你走出了苏格兰开局，用 d4 立即打开中心。',
+  goal: '走出 1.e4 e5 2.Nf3 Nc6 3.d4。',
+  intro: '这是阶段 8 的开局挑战。你执白，离线 AI 按主线回应。',
+  steps: [
+    {
+      explanation: 'e4 争夺中心。',
+      from: 'e2',
+      hint: '走 e2-e4。',
+      id: 'scotch-center',
+      instruction: '先占据中心。',
+      response: { from: 'e7', to: 'e5' },
+      to: 'e4',
+    },
+    {
+      explanation: 'Nf3 发展马并攻击 e5。',
+      from: 'g1',
+      hint: '把 g1 马走到 f3。',
+      id: 'scotch-knight',
+      instruction: '发展马并攻击中心兵。',
+      response: { from: 'b8', to: 'c6' },
+      to: 'f3',
+    },
+    {
+      explanation: 'd4 立即挑战 e5，让中心尽早打开。',
+      from: 'd2',
+      hint: '用 d2 兵攻击 e5。',
+      id: 'scotch-break',
+      instruction: '现在用 d 兵打开中心。',
+      to: 'd4',
+    },
+  ],
+});
+
+const CARO_KANN_INTERACTIVE = createLineInteractive({
+  completion: '你建立了应对卡罗-康防御的中心，并自然发展后翼马。',
+  goal: '走出 1.e4 c6 2.d4 d5 3.Nc3。',
+  intro: '离线 AI 执黑选择卡罗-康防御，你练习白方的基础中心布局。',
+  steps: [
+    {
+      explanation: 'e4 先占中心；黑方 c6 准备 ...d5。',
+      from: 'e2',
+      hint: '走 e2-e4。',
+      id: 'caro-center',
+      instruction: '先占据 e4。',
+      response: { from: 'c7', to: 'c6' },
+      to: 'e4',
+    },
+    {
+      explanation: 'd4 建立双兵中心。',
+      from: 'd2',
+      hint: '走 d2-d4。',
+      id: 'caro-space',
+      instruction: '建立第二个中心兵。',
+      response: { from: 'd7', to: 'd5' },
+      to: 'd4',
+    },
+    {
+      explanation: 'Nc3 发展马并加强 e4。',
+      from: 'b1',
+      hint: '把 b1 马走到 c3。',
+      id: 'caro-develop',
+      instruction: '发展后翼马并保护中心。',
+      to: 'c3',
+    },
+  ],
+});
+
+const KINGS_INDIAN_INTERACTIVE = createLineInteractive({
+  completion: '你从初始局面建立了古典中心，黑方完成了王翼印度式布局。',
+  goal: '走出 1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.e4。',
+  intro: '离线 AI 展示王翼印度防御的基本布置，你负责建立白方中心。',
+  steps: [
+    {
+      explanation: 'd4 先占据中心。',
+      from: 'd2',
+      hint: '走 d2-d4。',
+      id: 'kid-d4',
+      instruction: '先走后前兵。',
+      response: { from: 'g8', to: 'f6' },
+      to: 'd4',
+    },
+    {
+      explanation: 'c4 扩大后翼和中心空间。',
+      from: 'c2',
+      hint: '走 c2-c4。',
+      id: 'kid-c4',
+      instruction: '用 c 兵扩大中心控制。',
+      response: { from: 'g7', to: 'g6' },
+      to: 'c4',
+    },
+    {
+      explanation: 'Nc3 发展马并支持 d5、e4。',
+      from: 'b1',
+      hint: '把 b1 马走到 c3。',
+      id: 'kid-knight',
+      instruction: '发展后翼马。',
+      response: { from: 'f8', to: 'g7' },
+      to: 'c3',
+    },
+    {
+      explanation: 'e4 建立宽阔兵中心，准备继续发展和保护王。',
+      from: 'e2',
+      hint: '把 e2 兵走到 e4。',
+      id: 'kid-e4',
+      instruction: '完成白方古典中心。',
+      to: 'e4',
+    },
+  ],
+});
+
+const OPERA_GAME_INTERACTIVE = createLineInteractive({
+  completion: '你复现了歌剧院名局的前六回合，重点是快速打开中心并让棋子参与进攻。',
+  goal: '复现莫菲在 1858 年歌剧院名局中的前六步白棋。',
+  intro: '棋谱走法属于公开历史事实；讲解为本项目原创。离线 AI 执黑复现对手走法。',
+  steps: [
+    {
+      explanation: 'e4 争夺中心并打开线路。',
+      from: 'e2',
+      hint: '走 e2-e4。',
+      id: 'opera-e4',
+      instruction: '莫菲先占据中心。',
+      response: { from: 'e7', to: 'e5' },
+      to: 'e4',
+    },
+    {
+      explanation: 'Nf3 发展马并攻击 e5。',
+      from: 'g1',
+      hint: '走 g1-f3。',
+      id: 'opera-nf3',
+      instruction: '发展马并制造压力。',
+      response: { from: 'd7', to: 'd6' },
+      to: 'f3',
+    },
+    {
+      explanation: 'd4 直接打开中心，利用出子速度。',
+      from: 'd2',
+      hint: '走 d2-d4。',
+      id: 'opera-d4',
+      instruction: '用 d 兵挑战黑方中心。',
+      response: { from: 'c8', to: 'g4' },
+      to: 'd4',
+    },
+    {
+      explanation: 'dxe5 先处理中心张力。',
+      from: 'd4',
+      hint: '用 d4 兵吃 e5 兵。',
+      id: 'opera-dxe5',
+      instruction: '交换黑方中心兵。',
+      response: { from: 'g4', to: 'f3' },
+      to: 'e5',
+    },
+    {
+      explanation: 'Qxf3 用后取回被吃的马，保持发展节奏。',
+      from: 'd1',
+      hint: '用 d1 后吃 f3 的象。',
+      id: 'opera-qxf3',
+      instruction: '取回 f3 的黑象。',
+      response: { from: 'd6', to: 'e5' },
+      to: 'f3',
+    },
+    {
+      explanation: 'Bc4 发展最后一枚王翼轻子，并对 f7 施压。',
+      from: 'f1',
+      hint: '把 f1 象发展到 c4。',
+      id: 'opera-bc4',
+      instruction: '继续发展，不急着用后吃边兵。',
+      to: 'c4',
+    },
+  ],
+});
+
+const EVERGREEN_GAME_INTERACTIVE = createLineInteractive({
+  completion: '你复现了常青树名局的开局片段，看到弃兵如何换取出子时间。',
+  goal: '复现安德森在 1852 年常青树名局中的前六步白棋。',
+  intro: '离线 AI 复现公开棋谱中的黑方走法；本课只讲开局发展主题。',
+  steps: [
+    {
+      explanation: 'e4 打开快速出子的道路。',
+      from: 'e2',
+      hint: '走 e2-e4。',
+      id: 'evergreen-e4',
+      instruction: '先占据中心。',
+      response: { from: 'e7', to: 'e5' },
+      to: 'e4',
+    },
+    {
+      explanation: 'Nf3 发展马并攻击 e5。',
+      from: 'g1',
+      hint: '走 g1-f3。',
+      id: 'evergreen-nf3',
+      instruction: '发展王翼马。',
+      response: { from: 'b8', to: 'c6' },
+      to: 'f3',
+    },
+    {
+      explanation: 'Bc4 发展象并关注 f7。',
+      from: 'f1',
+      hint: '走 f1-c4。',
+      id: 'evergreen-bc4',
+      instruction: '发展王翼象。',
+      response: { from: 'f8', to: 'c5' },
+      to: 'c4',
+    },
+    {
+      explanation: 'b4 是伊文斯弃兵，用一个兵换取发展时间。',
+      from: 'b2',
+      hint: '走 b2-b4。',
+      id: 'evergreen-b4',
+      instruction: '用 b 兵攻击 c5 象。',
+      response: { from: 'c5', to: 'b4' },
+      to: 'b4',
+    },
+    {
+      explanation: 'c3 追赶黑象，并准备 d4 建立中心。',
+      from: 'c2',
+      hint: '走 c2-c3。',
+      id: 'evergreen-c3',
+      instruction: '继续用兵获得出子时间。',
+      response: { from: 'b4', to: 'a5' },
+      to: 'c3',
+    },
+    {
+      explanation: 'd4 建立中心，让更多棋子和线路投入进攻。',
+      from: 'd2',
+      hint: '走 d2-d4。',
+      id: 'evergreen-d4',
+      instruction: '利用领先的发展打开中心。',
+      to: 'd4',
+    },
+  ],
+});
+
+const IMMORTAL_GAME_INTERACTIVE = createLineInteractive({
+  completion: '你复现了不朽对局的开局片段，并看到浪漫主义棋风愿意用兵换主动。',
+  goal: '复现安德森在 1851 年不朽对局中的前五步白棋。',
+  intro: '这是历史棋谱复现，不表示这些冒险走法适合所有实战。离线 AI 复现黑方应手。',
+  steps: [
+    {
+      explanation: 'e4 打开中心。',
+      from: 'e2',
+      hint: '走 e2-e4。',
+      id: 'immortal-e4',
+      instruction: '先占据中心。',
+      response: { from: 'e7', to: 'e5' },
+      to: 'e4',
+    },
+    {
+      explanation: 'f4 是王翼弃兵，用兵换取开放线路和时间。',
+      from: 'f2',
+      hint: '走 f2-f4。',
+      id: 'immortal-f4',
+      instruction: '走出王翼弃兵。',
+      response: { from: 'e5', to: 'f4' },
+      to: 'f4',
+    },
+    {
+      explanation: 'Bc4 发展象并瞄准 f7。',
+      from: 'f1',
+      hint: '走 f1-c4。',
+      id: 'immortal-bc4',
+      instruction: '继续发展棋子。',
+      response: { from: 'd8', to: 'h4' },
+      to: 'c4',
+    },
+    {
+      explanation: 'Kf1 应对将军，但白方因此失去易位权。',
+      from: 'e1',
+      hint: '把王从 e1 走到 f1。',
+      id: 'immortal-kf1',
+      instruction: '先解除黑后的将军。',
+      response: { from: 'b7', to: 'b5' },
+      to: 'f1',
+    },
+    {
+      explanation: 'Bxb5 接受反弃兵，同时保留对中心和王翼的压力。',
+      from: 'c4',
+      hint: '用 c4 象吃 b5 兵。',
+      id: 'immortal-bxb5',
+      instruction: '处理攻击 c4 象的 b5 兵。',
+      to: 'b5',
+    },
+  ],
+});
+
+const DEVELOPMENT_CHALLENGE_INTERACTIVE = createLineInteractive({
+  completion: '你完成了占中心、发展两枚轻子和王车易位的基础开局清单。',
+  goal: '用连续对弈完成 e4、Nf3、Bc4 和 O-O。',
+  intro: '这是阶段 8 的基础开局挑战。离线 AI 会给出受限合法回应。',
+  steps: [
+    ...createFoundationSteps().map((step) => ({
+      explanation: step.explanation,
+      from: step.acceptedMoves[0].from,
+      hint: step.hint,
+      id: `challenge-${step.id}`,
+      instruction: step.instruction,
+      response: step.opponent?.allowedMoves?.[0],
+      to: step.acceptedMoves[0].to,
+    })),
+    {
+      explanation: 'O-O 让王离开中央，并让 h1 车进入 f1。',
+      from: 'e1',
+      hint: '点击 e1 的王，再走到 g1。',
+      id: 'challenge-castle',
+      instruction: '完成王翼易位，保护王。',
+      to: 'g1',
+    },
+  ],
+});
+
+const CHECKMATE_INTERACTIVE = createLineInteractive({
+  completion: '你从标准初始局面完成了将死：黑王被攻击，而且没有合法解围方法。',
+  goal: '走出基础四步将杀，理解将死与普通将军的区别。',
+  intro: '离线 AI 按课程限定走法回应。这个短局用于认识将死，不代表最佳开局。',
+  steps: [
+    {
+      explanation: 'e4 打开后和象的线路。',
+      from: 'e2',
+      hint: '走 e2-e4。',
+      id: 'mate-e4',
+      instruction: '先打开王翼象和后的线路。',
+      response: { from: 'e7', to: 'e5' },
+      to: 'e4',
+    },
+    {
+      explanation: 'Bc4 瞄准只有黑王保护的 f7。',
+      from: 'f1',
+      hint: '把 f1 象走到 c4。',
+      id: 'mate-bc4',
+      instruction: '发展象并瞄准 f7。',
+      response: { from: 'b8', to: 'c6' },
+      to: 'c4',
+    },
+    {
+      explanation: 'Qh5 与象一起攻击 f7。',
+      from: 'd1',
+      hint: '把后走到 h5。',
+      id: 'mate-qh5',
+      instruction: '让后与象共同攻击 f7。',
+      response: { from: 'g8', to: 'f6' },
+      to: 'h5',
+    },
+    {
+      explanation: 'Qxf7# 是将死，黑王无法吃后、逃走或挡住攻击。',
+      from: 'h5',
+      hint: '用后吃掉 f7 兵。',
+      id: 'mate-qxf7',
+      instruction: '在 f7 完成将死。',
+      to: 'f7',
+    },
+  ],
+});
+
+const STANDARD_START_INTERACTIONS: Record<string, InteractiveLesson> = {
+  'challenge-development': DEVELOPMENT_CHALLENGE_INTERACTIVE,
+  'classic-evergreen': EVERGREEN_GAME_INTERACTIVE,
+  'classic-immortal': IMMORTAL_GAME_INTERACTIVE,
+  'classic-opera-game': OPERA_GAME_INTERACTIVE,
+  checkmate: CHECKMATE_INTERACTIVE,
+  'opening-caro-kann': CARO_KANN_INTERACTIVE,
+  'opening-french': FRENCH_INTERACTIVE,
+  'opening-kings-indian': KINGS_INDIAN_INTERACTIVE,
+  'opening-london': LONDON_INTERACTIVE,
+  'opening-queens-gambit': QUEENS_GAMBIT_INTERACTIVE,
+  'opening-ruy-lopez': RUY_LOPEZ_INTERACTIVE,
+  'opening-scotch': SCOTCH_INTERACTIVE,
+  'opening-sicilian': SICILIAN_INTERACTIVE,
+};
+
+const LESSON_CATALOG: LessonDefinition[] = [
   {
     category: 'basics',
     fen: START_FEN,
@@ -418,6 +1040,123 @@ const LESSON_CATALOG: ChessLesson[] = [
     why: '兵链会长期决定双方棋子的活动空间。',
   },
   {
+    category: 'openings',
+    fen: 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3',
+    id: 'opening-scotch',
+    level: '进阶',
+    mistake: { explanation: '3.Bb5 会进入西班牙开局，没有立即用 d4 打开中心。', label: '3.Bb5' },
+    points: ['先用 e4 和 Nf3 建立中心压力。', 'd4 立即挑战 e5。', '中心打开后要优先完成出子。'],
+    recommended: { explanation: '3.d4 直接攻击 e5，让局面较早开放。', from: 'd2', label: '3.d4', to: 'd4' },
+    summary: '用快速打开中心学习苏格兰开局。',
+    title: '苏格兰开局挑战',
+    training: {
+      format: 'challenge',
+      objectives: ['从初始局面走出苏格兰开局', '理解 d4 的中心突破'],
+      tags: ['开放中心', '快速发展'],
+    },
+    why: '当自己的棋子发展顺畅时，打开中心能更快形成主动。',
+  },
+  {
+    category: 'openings',
+    fen: 'rnbqkbnr/pp2pppp/2p5/3p4/3PP3/8/PPP2PPP/RNBQKBNR w KQkq - 0 3',
+    id: 'opening-caro-kann',
+    level: '进阶',
+    mistake: { explanation: '3.e5 可以进入推进变化，但会立刻固定中心，需要理解后续兵链。', label: '3.e5?!' },
+    points: ['黑方用 c6 支持 ...d5。', '白方先建立 e4、d4 双兵中心。', 'Nc3 自然发展并保护 e4。'],
+    recommended: { explanation: '3.Nc3 发展后翼马，同时加强 e4 中心兵。', from: 'b1', label: '3.Nc3', to: 'c3' },
+    summary: '学习应对卡罗-康防御的基础中心布局。',
+    title: '卡罗-康防御挑战',
+    training: {
+      format: 'challenge',
+      objectives: ['识别 ...c6 和 ...d5 的计划', '自然发展后翼马'],
+      tags: ['双兵中心', '稳固防御'],
+    },
+    why: '先建立和保护中心，比过早寻找战术更适合初学者。',
+  },
+  {
+    category: 'openings',
+    fen: 'rnbqk2r/ppppppbp/5np1/8/2PP4/2N5/PP2PPPP/R1BQKBNR w KQkq - 2 4',
+    id: 'opening-kings-indian',
+    level: '进阶',
+    mistake: { explanation: '4.h3?! 没有利用黑方暂不占中心的机会，发展速度也较慢。', label: '4.h3?!' },
+    points: ['黑方先用马和象远程控制中心。', '白方可以建立 d4、c4、e4 的宽阔中心。', '大中心也需要棋子保护。'],
+    recommended: { explanation: '4.e4 建立古典兵中心，争取更多空间。', from: 'e2', label: '4.e4', to: 'e4' },
+    summary: '认识王翼印度防御中的中心与远程控制。',
+    title: '王翼印度防御挑战',
+    training: {
+      format: 'challenge',
+      objectives: ['建立白方古典中心', '识别黑方王翼象布局'],
+      tags: ['封闭中心', '远程控制'],
+    },
+    why: '对手暂时不放兵进中心时，可以先占空间，但必须准备应对反击。',
+  },
+  {
+    category: 'classics',
+    fen: 'rn1qkbnr/ppp2ppp/8/4p3/4P3/5Q2/PPP2PPP/RNB1KB1R w KQkq - 0 6',
+    historical: {
+      event: '巴黎歌剧院对局',
+      players: '保罗·莫菲 - 布伦瑞克公爵与伊苏阿尔伯爵',
+      year: 1858,
+    },
+    id: 'classic-opera-game',
+    level: '进阶',
+    mistake: { explanation: '6.Qxb7?! 继续用后吃兵会拖慢出子，并让黑方获得追后的时间。', label: '6.Qxb7?!' },
+    points: ['莫菲先打开中心。', '每一步尽量发展新棋子。', '领先发展时应尽快让线路参与进攻。'],
+    recommended: { explanation: '6.Bc4 发展王翼象，并立即对 f7 施压。', from: 'f1', label: '6.Bc4', to: 'c4' },
+    summary: '从歌剧院名局学习快速出子和开放线路。',
+    title: '歌剧院名局：快速发展',
+    training: {
+      format: 'classic-game',
+      objectives: ['复现公开棋谱前六回合', '理解发展速度'],
+      tags: ['莫菲', '发展', '开放中心'],
+    },
+    why: '领先发展只有在及时打开线路、让棋子参加战斗时才有价值。',
+  },
+  {
+    category: 'classics',
+    fen: 'r1bqk1nr/pppp1ppp/2n5/b3p3/2B1P3/2P2N2/P2P1PPP/RNBQK2R w KQkq - 1 6',
+    historical: {
+      event: '常青树对局',
+      players: '阿道夫·安德森 - 让·迪弗雷纳',
+      year: 1852,
+    },
+    id: 'classic-evergreen',
+    level: '进阶',
+    mistake: { explanation: '6.d3?! 虽然稳固，却没有利用弃兵换来的时间立即占领中心。', label: '6.d3?!' },
+    points: ['伊文斯弃兵用一个兵换取时间。', 'c3 追象并准备 d4。', '弃兵后必须快速发展，不能慢走。'],
+    recommended: { explanation: '6.d4 建立中心并打开更多线路。', from: 'd2', label: '6.d4', to: 'd4' },
+    summary: '从常青树名局认识弃兵、时间和中心。',
+    title: '常青树名局：弃兵争先',
+    training: {
+      format: 'classic-game',
+      objectives: ['复现公开棋谱开局片段', '理解弃兵换时间'],
+      tags: ['安德森', '伊文斯弃兵', '主动'],
+    },
+    why: '主动弃兵不是无偿丢兵，而是必须用更快的出子和中心控制获得补偿。',
+  },
+  {
+    category: 'classics',
+    fen: 'rnb1kbnr/p1pp1ppp/8/1p6/2B1Pp1q/8/PPPP2PP/RNBQ1KNR w kq - 0 5',
+    historical: {
+      event: '不朽对局',
+      players: '阿道夫·安德森 - 莱昂内尔·基泽里茨基',
+      year: 1851,
+    },
+    id: 'classic-immortal',
+    level: '进阶',
+    mistake: { explanation: '5.Be2?! 保住象但放弃吃兵机会，也让黑方免费获得后翼空间。', label: '5.Be2?!' },
+    points: ['王翼弃兵属于冒险的开放型开局。', '被将军时必须先解除威胁。', '历史名局可学习思想，不应机械模仿牺牲。'],
+    recommended: { explanation: '5.Bxb5 接受黑方反弃兵，并保留象的活跃位置。', from: 'c4', label: '5.Bxb5', to: 'b5' },
+    summary: '复现不朽对局开局，认识浪漫主义进攻。',
+    title: '不朽对局：主动与风险',
+    training: {
+      format: 'classic-game',
+      objectives: ['复现公开棋谱前五回合', '区分主动进攻与无根据冒险'],
+      tags: ['安德森', '王翼弃兵', '王安全'],
+    },
+    why: '经典棋局的价值在于理解选择背后的代价，而不是把每一步当成固定答案。',
+  },
+  {
     category: 'strategy',
     fen: '4k3/8/8/8/3q4/2N5/8/4K3 w - - 0 1',
     id: 'strategy-piece-safety',
@@ -479,6 +1218,40 @@ const LESSON_CATALOG: ChessLesson[] = [
     why: '对手通常一次只能处理一个问题。',
   },
   {
+    category: 'strategy',
+    fen: 'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4',
+    id: 'challenge-development',
+    level: '基础',
+    mistake: { explanation: '4.d3?! 可以下，但此时继续把王留在中央，没有完成本挑战的安全目标。', label: '4.d3?!' },
+    points: ['先用中心兵打开线路。', '尽早发展马和象。', '王翼易位同时保护王并激活车。'],
+    recommended: { explanation: '4.O-O 完成基础开局的最后一项：保护王。', from: 'e1', label: '4.O-O', to: 'g1' },
+    summary: '连续完成占中心、出子和易位。',
+    title: '挑战：完成基础开局',
+    training: {
+      format: 'challenge',
+      objectives: ['连续完成四个基础开局目标', '在实战流程中完成易位'],
+      tags: ['中心', '发展', '王安全'],
+    },
+    why: '初学阶段先完成稳定的开局清单，能减少过早进攻造成的失误。',
+  },
+  {
+    category: 'strategy',
+    fen: '2r3k1/8/8/5N2/8/8/8/4K3 w - - 0 1',
+    id: 'challenge-knight-fork',
+    level: '进阶',
+    mistake: { explanation: '1.Nh6+? 只有将军，没有同时攻击 c8 的车。', label: '1.Nh6+?' },
+    points: ['先找必须回应的将军。', '再检查同一步是否攻击第二个目标。', '马的跳跃能力适合制造双攻。'],
+    recommended: { explanation: '1.Ne7+ 同时将军并攻击 c8 黑车。', from: 'f5', label: '1.Ne7+', to: 'e7' },
+    summary: '从基础开局进入专题局面，完成一次马的双重攻击。',
+    title: '挑战：找到带将军的双攻',
+    training: {
+      format: 'challenge',
+      objectives: ['识别强制着法', '完成马的双重攻击'],
+      tags: ['战术', '双攻', '将军'],
+    },
+    why: '带将军的双攻迫使对手先救王，通常能赢得另一个目标。',
+  },
+  {
     category: 'endgames',
     fen: '8/4k3/8/4K3/4P3/8/8/8 w - - 0 1',
     id: 'endgame-king-pawn',
@@ -527,10 +1300,44 @@ const LESSON_CATALOG: ChessLesson[] = [
     title: '车王杀单王',
     why: '车不能控制斜线，所以必须依靠王封住逃跑格。',
   },
+  {
+    category: 'endgames',
+    fen: '7k/8/8/2P5/8/8/8/K7 w - - 0 1',
+    id: 'challenge-pawn-square',
+    level: '基础',
+    mistake: { explanation: '1.Kb2? 浪费一步后，黑王会更接近通路兵的方格。', label: '1.Kb2?' },
+    points: ['计算兵到升变还需要几步。', '用同样边长画出“兵的方格”。', '敌王在方格外且轮到兵走时，通常追不上。'],
+    recommended: { explanation: '1.c6 立即推进，黑王位于兵的方格之外。', from: 'c5', label: '1.c6', to: 'c6' },
+    summary: '从基础开局进入残局，使用方格法判断通路兵。',
+    title: '挑战：兵的方格法',
+    training: {
+      format: 'challenge',
+      objectives: ['判断黑王能否追上通路兵', '及时推进远方通路兵'],
+      tags: ['残局', '通路兵', '方格法'],
+    },
+    why: '方格法能在不逐步计算每个王步时，快速判断兵能否独自升变。',
+  },
+  {
+    category: 'endgames',
+    fen: '8/4k3/8/3PK3/8/8/8/8 w - - 0 1',
+    id: 'challenge-protected-passer',
+    level: '进阶',
+    mistake: { explanation: '1.Kf5?! 没有利用当前机会推进兵，反而给黑王调整位置。', label: '1.Kf5?!' },
+    points: ['自己的王要保护通路兵前进。', '推进带将军能迫使对方先回应。', '王不能吃被敌王保护的兵。'],
+    recommended: { explanation: '1.d6+ 推兵将军；黑王不能吃 d6，因为白王保护该格。', from: 'd5', label: '1.d6+', to: 'd6' },
+    summary: '让王保护通路兵，并用带将军的推进争取时间。',
+    title: '挑战：受保护的通路兵',
+    training: {
+      format: 'challenge',
+      objectives: ['识别受王保护的推进格', '利用带将军的兵步'],
+      tags: ['残局', '通路兵', '王的配合'],
+    },
+    why: '残局中，王和兵互相保护时能形成对方王无法直接阻挡的推进。',
+  },
 ];
 
 function createRecommendedMoveInteractive(
-  lesson: ChessLesson,
+  lesson: LessonDefinition,
 ): InteractiveLesson | undefined {
   const recommended = lesson.recommended;
 
@@ -579,19 +1386,89 @@ function createRecommendedMoveInteractive(
   };
 }
 
-export const LESSONS: ChessLesson[] = LESSON_CATALOG.map((lesson) => {
-  if (lesson.interactive || !lesson.recommended) {
-    return lesson;
+function prependFoundation(
+  lesson: LessonDefinition,
+  focus: InteractiveLesson,
+): InteractiveLesson {
+  if (focus.startFen === START_FEN) {
+    return focus;
+  }
+
+  const foundation = createFoundationSteps();
+  const transitionStep = foundation[foundation.length - 1];
+
+  transitionStep.transition = {
+    fen: focus.startFen,
+    message: `基础开局完成。现在进入“${lesson.title}”的专题局面。`,
+  };
+
+  return {
+    ...focus,
+    intro: `先与离线 AI 从标准初始局面完成基础开局，再进入专题练习。${focus.intro}`,
+    startFen: START_FEN,
+    steps: [...foundation, ...focus.steps],
+  };
+}
+
+function createKnowledgeInteractive(
+  lesson: LessonDefinition,
+): InteractiveLesson {
+  const steps = createFoundationSteps();
+  const lastStep = steps[steps.length - 1];
+
+  if (lesson.fen !== START_FEN) {
+    lastStep.transition = {
+      fen: lesson.fen,
+      message: `基础开局完成。棋盘已切换到“${lesson.title}”的说明局面。`,
+    };
   }
 
   return {
-    ...lesson,
-    interactive: createRecommendedMoveInteractive(lesson),
+    completion: `你完成了从标准初始局面开始的对弈，并进入“${lesson.title}”的说明。${lesson.summary}`,
+    goal: `先完成基础开局，再结合棋盘理解“${lesson.title}”。`,
+    intro: '由你执白，离线 AI 负责黑方回应。',
+    startFen: START_FEN,
+    steps,
   };
-});
+}
+
+function createBuiltInLesson(lesson: LessonDefinition): ChessLesson {
+  const explicit =
+    STANDARD_START_INTERACTIONS[lesson.id] ?? lesson.interactive;
+  const focus =
+    explicit ?? createRecommendedMoveInteractive(lesson);
+  const interactive = focus
+    ? prependFoundation(lesson, focus)
+    : createKnowledgeInteractive(lesson);
+  const defaultFormat =
+    lesson.category === 'classics'
+      ? 'classic-game'
+      : lesson.id.startsWith('challenge-')
+        ? 'challenge'
+        : 'guided';
+
+  return {
+    ...lesson,
+    interactive,
+    training: {
+      format: lesson.training?.format ?? defaultFormat,
+      objectives: lesson.training?.objectives ?? [lesson.summary],
+      source: 'built-in',
+      standardStart: interactive.startFen === START_FEN,
+      tags: lesson.training?.tags ?? [
+        LESSON_CATEGORY_LABELS[lesson.category],
+        lesson.level,
+      ],
+    },
+  };
+}
+
+export const LESSONS: ChessLesson[] =
+  LESSON_CATALOG.map(createBuiltInLesson);
 
 const ADVANCED_CATEGORIES = new Set<LessonCategory>([
   'openings',
+  'classics',
   'strategy',
   'endgames',
 ]);
@@ -624,6 +1501,20 @@ export function validateLessonCatalog(
 
     if (lesson.points.length === 0 || !lesson.why.trim()) {
       issues.push(`${lesson.id}: 缺少教学解释`);
+    }
+    if (!lesson.interactive) {
+      issues.push(`${lesson.id}: 缺少互动对弈`);
+    } else if (
+      lesson.training.source === 'built-in' &&
+      lesson.interactive.startFen !== START_FEN
+    ) {
+      issues.push(`${lesson.id}: 内置课程没有从标准初始局面开始`);
+    }
+    if (
+      lesson.training.objectives.length === 0 ||
+      lesson.training.tags.length === 0
+    ) {
+      issues.push(`${lesson.id}: 缺少训练数据`);
     }
     if (
       ADVANCED_CATEGORIES.has(lesson.category) &&

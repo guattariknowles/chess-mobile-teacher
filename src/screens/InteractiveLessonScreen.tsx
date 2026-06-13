@@ -44,7 +44,9 @@ export function InteractiveLessonScreen({
     null,
   );
   const [legalMoves, setLegalMoves] = useState<LegalMove[]>([]);
-  const [flipped, setFlipped] = useState(false);
+  const [flipped, setFlipped] = useState(
+    interactive.humanColor === 'b',
+  );
   const { height, width } = useWindowDimensions();
   const snapshot = useMemo(
     () =>
@@ -125,8 +127,10 @@ export function InteractiveLessonScreen({
             <Text style={styles.eyebrow}>互动练习 · {lesson.level}</Text>
             <Text style={styles.title}>{lesson.title}</Text>
             <Text style={styles.progress}>
-              第 {progress} / {interactive.steps.length} 步 · 错误{' '}
-              {runtime.errors} 次
+              {runtime.freePlay || interactive.steps.length === 0
+                ? '自由对弈'
+                : `第 ${progress} / ${interactive.steps.length} 步`}{' '}
+              · 错误 {runtime.errors} 次
             </Text>
           </View>
         </View>
@@ -135,7 +139,12 @@ export function InteractiveLessonScreen({
           <Text style={styles.cardLabel}>本课目标</Text>
           <Text style={styles.goalText}>{interactive.goal}</Text>
           <Text style={styles.modeText}>
-            {usesLocalAi
+            {runtime.freePlay
+              ? '当前对手：离线 AI 自主走棋；Stockfish 接入后由其替换'
+              : lesson.training.source === 'imported' &&
+                  lesson.category === 'classics'
+                ? '当前对手：离线 AI 严格按照导入棋谱回应'
+                : usesLocalAi
               ? '当前对手：离线本地 AI；课程目标仍限制正确走法'
               : usesScript
                 ? '当前对手：固定教学脚本'
@@ -160,7 +169,9 @@ export function InteractiveLessonScreen({
             {runtime.completed ? '课程完成' : '当前任务'}
           </Text>
           <Text style={styles.instructionText}>
-            {runtime.completed
+            {runtime.freePlay
+              ? '继续按棋规走棋。你走一步后，AI 会自主回应一步。'
+              : runtime.completed
               ? interactive.completion
               : step?.instruction}
           </Text>
@@ -183,6 +194,7 @@ export function InteractiveLessonScreen({
 
         <View style={styles.controlRow}>
           <ControlButton
+            disabled={runtime.freePlay}
             label="提示"
             onPress={() =>
               setRuntime((current) => showLessonHint(lesson, current))
@@ -204,7 +216,7 @@ export function InteractiveLessonScreen({
             }}
           />
           <ControlButton
-            disabled={!runtime.awaitingAdvance}
+            disabled={!runtime.awaitingAdvance || runtime.freePlay}
             label="下一步"
             onPress={() => {
               setRuntime((current) => advanceLesson(lesson, current));

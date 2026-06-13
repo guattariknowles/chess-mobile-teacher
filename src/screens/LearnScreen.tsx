@@ -1,6 +1,12 @@
 import type { Square } from 'chess.js';
-import { useMemo, useState, type ReactNode } from 'react';
 import {
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,13 +18,21 @@ import {
 import { ChessBoard } from '../components/Board/ChessBoard';
 import {
   type ChessLesson,
-  getLessonsByCategory,
   LESSON_CATEGORY_LABELS,
   type LessonCategory,
   LESSONS,
 } from '../data/lessons/lessonCatalog';
 import { ChessGame } from '../game/chessState';
+import {
+  createLessonFromImportedTraining,
+  type ImportedTrainingRecord,
+} from '../game/importedTraining';
+import {
+  deleteImportedTraining,
+  loadImportedTrainings,
+} from '../game/importedTrainingStorage';
 import { InteractiveLessonScreen } from './InteractiveLessonScreen';
+import { TrainingImportScreen } from './TrainingImportScreen';
 
 type LearnScreenProps = {
   onBack: () => void;
@@ -27,6 +41,7 @@ type LearnScreenProps = {
 const CATEGORIES: LessonCategory[] = [
   'basics',
   'openings',
+  'classics',
   'strategy',
   'endgames',
 ];
@@ -37,6 +52,64 @@ export function LearnScreen({ onBack }: LearnScreenProps) {
     useState<ChessLesson | null>(null);
   const [interactiveLesson, setInteractiveLesson] =
     useState<ChessLesson | null>(null);
+  const [importVisible, setImportVisible] = useState(false);
+  const [importedRecords, setImportedRecords] = useState<
+    ImportedTrainingRecord[]
+  >([]);
+  const importedLessons = useMemo(
+    () =>
+      importedRecords.flatMap((record) => {
+        try {
+          return [createLessonFromImportedTraining(record)];
+        } catch {
+          return [];
+        }
+      }),
+    [importedRecords],
+  );
+  const allLessons = useMemo(
+    () => [...LESSONS, ...importedLessons],
+    [importedLessons],
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    loadImportedTrainings()
+      .then((records) => {
+        if (active) {
+          setImportedRecords(records);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setImportedRecords([]);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (importVisible) {
+    return (
+      <TrainingImportScreen
+        onBack={() => setImportVisible(false)}
+        onImported={(record) => {
+          const lesson = createLessonFromImportedTraining(record);
+
+          setImportedRecords((records) => [
+            record,
+            ...records.filter((item) => item.id !== record.id),
+          ]);
+          setCategory(record.category);
+          setImportVisible(false);
+          setSelectedLesson(lesson);
+        }}
+      />
+    );
+  }
 
   if (interactiveLesson) {
     return (
@@ -52,6 +125,31 @@ export function LearnScreen({ onBack }: LearnScreenProps) {
       <LessonDetail
         lesson={selectedLesson}
         onBack={() => setSelectedLesson(null)}
+        onDelete={
+          selectedLesson.training.source === 'imported'
+            ? () => {
+                Alert.alert(
+                  '删除导入训练？',
+                  '删除后需要重新导入 PGN 才能恢复。',
+                  [
+                    { style: 'cancel', text: '取消' },
+                    {
+                      onPress: async () => {
+                        const records = await deleteImportedTraining(
+                          selectedLesson.id,
+                        );
+
+                        setImportedRecords(records);
+                        setSelectedLesson(null);
+                      },
+                      style: 'destructive',
+                      text: '删除',
+                    },
+                  ],
+                );
+              }
+            : undefined
+        }
         onStartInteractive={
           selectedLesson.interactive
             ? () => setInteractiveLesson(selectedLesson)
@@ -61,7 +159,9 @@ export function LearnScreen({ onBack }: LearnScreenProps) {
     );
   }
 
-  const lessons = getLessonsByCategory(category);
+  const lessons = allLessons.filter(
+    (lesson) => lesson.category === category,
+  );
 
   return (
     <View style={styles.screen}>
@@ -70,10 +170,10 @@ export function LearnScreen({ onBack }: LearnScreenProps) {
           <Text style={styles.outlineButtonText}>返回棋盘</Text>
         </Pressable>
         <View style={styles.headerText}>
-          <Text style={styles.eyebrow}>PART 7 · 互动教学</Text>
+          <Text style={styles.eyebrow}>PART 8 · AI 对弈教学</Text>
           <Text style={styles.title}>学习国际象棋</Text>
           <Text style={styles.subtitle}>
-            {LESSONS.length} 节原创课程，无需联网
+            {allLessons.length} 节课程 · {importedLessons.length} 节本机导入
           </Text>
         </View>
       </View>
@@ -105,17 +205,29 @@ export function LearnScreen({ onBack }: LearnScreenProps) {
               {LESSON_CATEGORY_LABELS[item]}
             </Text>
             <Text maxFontSizeMultiplier={1.25} style={styles.categoryCount}>
-              {getLessonsByCategory(item).length} 节
+              {
+                allLessons.filter((lesson) => lesson.category === item)
+                  .length
+              }{' '}
+              节
             </Text>
           </Pressable>
         ))}
       </ScrollView>
 
       <View style={styles.sectionHeading}>
-        <Text style={styles.sectionTitle}>
-          {LESSON_CATEGORY_LABELS[category]}
-        </Text>
-        <Text style={styles.sectionHint}>查看说明或开始互动练习</Text>
+        <View>
+          <Text style={styles.sectionTitle}>
+            {LESSON_CATEGORY_LABELS[category]}
+          </Text>
+          <Text style={styles.sectionHint}>查看说明或开始互动练习</Text>
+        </View>
+        <Pressable
+          onPress={() => setImportVisible(true)}
+          style={styles.importTrainingButton}
+        >
+          <Text style={styles.importTrainingText}>导入训练棋局</Text>
+        </Pressable>
       </View>
 
       <ScrollView
@@ -144,6 +256,9 @@ export function LearnScreen({ onBack }: LearnScreenProps) {
               <Text numberOfLines={2} style={styles.lessonWhy}>
                 为什么：{lesson.why}
               </Text>
+              {lesson.training.source === 'imported' ? (
+                <Text style={styles.importedBadge}>本机 PGN 导入</Text>
+              ) : null}
             </View>
             <Text style={styles.chevron}>›</Text>
           </Pressable>
@@ -156,10 +271,12 @@ export function LearnScreen({ onBack }: LearnScreenProps) {
 function LessonDetail({
   lesson,
   onBack,
+  onDelete,
   onStartInteractive,
 }: {
   lesson: ChessLesson;
   onBack: () => void;
+  onDelete?: () => void;
   onStartInteractive?: () => void;
 }) {
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(
@@ -284,9 +401,19 @@ function LessonDetail({
         <View style={styles.sourceCard}>
           <Text style={styles.sourceTitle}>内容说明</Text>
           <Text style={styles.sourceText}>
-            本课程为 Free Chess 原创入门讲解，不复制第三方课程或书籍原文。
+            {lesson.training.source === 'imported'
+              ? '本课程由你导入的 PGN 在本机生成，不会上传。'
+              : lesson.historical
+                ? `${lesson.historical.players}，${lesson.historical.event}（${lesson.historical.year}）。棋谱走法为公开历史事实，讲解为 Free Chess 原创。`
+                : '本课程为 Free Chess 原创入门讲解，不复制第三方课程或书籍原文。'}
           </Text>
         </View>
+
+        {onDelete ? (
+          <Pressable onPress={onDelete} style={styles.deleteTrainingButton}>
+            <Text style={styles.deleteTrainingText}>删除这节导入训练</Text>
+          </Pressable>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -410,6 +537,20 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingHorizontal: 16,
   },
+  deleteTrainingButton: {
+    alignItems: 'center',
+    borderColor: '#704a3e',
+    borderRadius: 9,
+    borderWidth: 1,
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingVertical: 10,
+  },
+  deleteTrainingText: {
+    color: '#e58b75',
+    fontSize: 11,
+    fontWeight: '800',
+  },
   interactiveCallout: {
     alignItems: 'center',
     backgroundColor: '#302819',
@@ -439,6 +580,24 @@ const styles = StyleSheet.create({
   },
   interactiveButtonText: {
     color: '#fff3df',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  importedBadge: {
+    color: '#d7a65c',
+    fontSize: 9,
+    fontWeight: '800',
+    marginTop: 5,
+  },
+  importTrainingButton: {
+    borderColor: '#9d7138',
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  importTrainingText: {
+    color: '#efbd72',
     fontSize: 10,
     fontWeight: '900',
   },

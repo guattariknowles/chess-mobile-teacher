@@ -30,6 +30,21 @@ function getLesson(id: string) {
   return lesson;
 }
 
+function enterGeneratedFocus(lesson: ReturnType<typeof getLesson>) {
+  let state = createLessonRuntime(lesson);
+
+  for (const move of [
+    { from: 'e2' as const, to: 'e4' as const },
+    { from: 'g1' as const, to: 'f3' as const },
+    { from: 'f1' as const, to: 'c4' as const },
+  ]) {
+    state = attemptLessonMove(lesson, state, move, () => 0);
+    state = advanceLesson(lesson, state);
+  }
+
+  return state;
+}
+
 test('Italian lesson accepts the main line and constrained AI replies', () => {
   const lesson = getLesson('opening-italian');
   let state = createLessonRuntime(lesson);
@@ -61,17 +76,18 @@ test('Italian lesson accepts the main line and constrained AI replies', () => {
 
 test('recommended-move lessons receive a working generated interaction', () => {
   const lesson = getLesson('piece-knight');
+  const focus = enterGeneratedFocus(lesson);
   const state = attemptLessonMove(
     lesson,
-    createLessonRuntime(lesson),
+    focus,
     { from: 'd4', to: 'f5' },
     () => 0,
   );
 
   assert.equal(state.completed, true);
-  assert.equal(state.moves[0].from, 'd4');
-  assert.equal(state.moves[0].to, 'f5');
-  assert.ok(state.moves.length >= 1);
+  assert.equal(state.moves[6].from, 'd4');
+  assert.equal(state.moves[6].to, 'f5');
+  assert.ok(state.moves.length >= 7);
 });
 
 test('wrong and illegal moves give feedback without changing the board', () => {
@@ -110,7 +126,8 @@ test('strategy lesson uses local AI only inside its allowed replies', () => {
 test('endgame lesson supports hint, undo, retry and restart', () => {
   const lesson = getLesson('endgame-king-pawn');
   const initial = createLessonRuntime(lesson);
-  const hinted = showLessonHint(lesson, initial);
+  const focus = enterGeneratedFocus(lesson);
+  const hinted = showLessonHint(lesson, focus);
   const firstStep = attemptLessonMove(
     lesson,
     hinted,
@@ -119,11 +136,11 @@ test('endgame lesson supports hint, undo, retry and restart', () => {
   );
 
   assert.equal(hinted.feedback.kind, 'hint');
-  assert.equal(firstStep.moves.length, 2);
+  assert.equal(firstStep.moves.length, 8);
 
   const undone = undoLessonMove(firstStep);
-  assert.equal(undone.fen, initial.fen);
-  assert.equal(undone.moves.length, 0);
+  assert.equal(undone.fen, focus.fen);
+  assert.equal(undone.moves.length, 6);
 
   const retried = advanceLesson(
     lesson,

@@ -16,13 +16,13 @@ type Assert = {
 const test = require('node:test') as TestFunction;
 const assert = require('node:assert/strict') as Assert;
 
-test('lesson catalog covers every Part 5 teaching area', () => {
+test('stage eight expands every teaching area', () => {
   assert.equal(getLessonsByCategory('basics').length, 16);
-  assert.ok(getLessonsByCategory('openings').length >= 5);
-  assert.ok(getLessonsByCategory('openings').length <= 10);
-  assert.ok(getLessonsByCategory('strategy').length >= 5);
-  assert.ok(getLessonsByCategory('endgames').length >= 3);
-  assert.equal(LESSONS.length, 31);
+  assert.equal(getLessonsByCategory('openings').length, 9);
+  assert.equal(getLessonsByCategory('classics').length, 3);
+  assert.equal(getLessonsByCategory('strategy').length, 7);
+  assert.equal(getLessonsByCategory('endgames').length, 6);
+  assert.equal(LESSONS.length, 41);
 });
 
 test('every lesson has a readable FEN and legal recommended move', () => {
@@ -43,29 +43,50 @@ test('advanced lessons explain a recommendation and a common mistake', () => {
   );
 });
 
-test('stage seven keeps all lessons and makes every move-based lesson interactive', () => {
+test('stage eight makes every built-in lesson an AI game from the standard start', () => {
   const interactive = LESSONS.filter((lesson) => lesson.interactive);
   const staticLessons = LESSONS.filter((lesson) => !lesson.interactive);
 
-  assert.equal(LESSONS.length, 31);
-  assert.equal(interactive.length, 26);
-  assert.deepEqual(
-    staticLessons.map((lesson) => lesson.id),
-    [
-      'board-coordinates',
-      'checkmate',
-      'draw',
-      'clock-basics',
-      'pgn-basics',
-    ],
-  );
+  assert.equal(LESSONS.length, 41);
+  assert.equal(interactive.length, 41);
+  assert.deepEqual(staticLessons, []);
   assert.ok(
     interactive.every(
       (lesson) =>
         lesson.interactive &&
         lesson.interactive.steps.length > 0 &&
         lesson.interactive.goal.trim() &&
-        lesson.recommended,
+        lesson.interactive.startFen ===
+          'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    ),
+  );
+  assert.ok(
+    LESSONS.every(
+      (lesson) =>
+        lesson.training.source === 'built-in' &&
+        lesson.training.standardStart &&
+        lesson.training.objectives.length > 0 &&
+        lesson.training.tags.length > 0,
+    ),
+  );
+});
+
+test('stage eight includes challenge and public classic-game training', () => {
+  assert.equal(
+    LESSONS.filter(
+      (lesson) => lesson.training.format === 'challenge',
+    ).length,
+    7,
+  );
+  assert.equal(
+    LESSONS.filter(
+      (lesson) => lesson.training.format === 'classic-game',
+    ).length,
+    3,
+  );
+  assert.ok(
+    getLessonsByCategory('classics').every(
+      (lesson) => lesson.historical?.year,
     ),
   );
 });

@@ -20,6 +20,7 @@ type LessonRuntimeCheckpoint = {
   errors: number;
   feedback: LessonFeedback;
   fen: string;
+  freePlay: boolean;
   moves: LegalMove[];
   stepIndex: number;
   turn: Color;
@@ -49,6 +50,7 @@ function checkpointState(
     errors: state.errors,
     feedback: state.feedback,
     fen: state.fen,
+    freePlay: state.freePlay,
     moves: [...state.moves],
     stepIndex: state.stepIndex,
     turn: state.turn,
@@ -114,9 +116,30 @@ export function createLessonRuntime(
   lesson: ChessLesson,
 ): LessonRuntimeState {
   const interactive = getInteractiveLesson(lesson);
-  const snapshot = new ChessGame(interactive.startFen, {
+  const game = new ChessGame(interactive.startFen, {
     allowMovesAfterGameOver: true,
-  }).getSnapshot();
+  });
+  const initialMove = interactive.initialOpponent
+    ? getOpponentMove(
+        {
+          acceptedMoves: [],
+          explanation: '',
+          hint: '',
+          id: 'initial-opponent',
+          incorrectFeedback: '',
+          instruction: '',
+          opponent: interactive.initialOpponent,
+        },
+        interactive.startFen,
+        Math.random,
+      )
+    : null;
+  const appliedInitialMove = initialMove
+    ? applyMove(game, initialMove)
+    : null;
+  const snapshot = game.getSnapshot();
+  const freePlay =
+    interactive.steps.length === 0 && interactive.freePlay !== undefined;
 
   return {
     awaitingAdvance: false,
@@ -124,12 +147,17 @@ export function createLessonRuntime(
     errors: 0,
     feedback: {
       kind: 'info',
-      message: interactive.intro,
+      message: `${interactive.intro}${
+        appliedInitialMove
+          ? ` AI 先走 ${appliedInitialMove.san}，现在轮到你。`
+          : ''
+      }`,
     },
     fen: snapshot.fen,
+    freePlay,
     history: [],
     lessonId: lesson.id,
-    moves: [],
+    moves: appliedInitialMove ? [appliedInitialMove] : [],
     stepIndex: 0,
     turn: snapshot.status.turn,
   };
@@ -153,6 +181,67 @@ export function attemptLessonMove(
   }
 
   const interactive = getInteractiveLesson(lesson);
+
+  if (state.freePlay) {
+    const game = new ChessGame(state.fen, {
+      allowMovesAfterGameOver: true,
+    });
+    const legalMove = game
+      .getLegalMoves(input.from)
+      .find((move) => movesMatch(move, input));
+
+    if (!legalMove) {
+      return {
+        ...state,
+        errors: state.errors + 1,
+        feedback: {
+          kind: 'error',
+          message: '这步不符合棋规，请重新选择。',
+        },
+      };
+    }
+
+    const history = [...state.history, checkpointState(state)];
+    const userMove = applyMove(game, input);
+    let snapshot = game.getSnapshot();
+    const opponentMove = snapshot.status.isGameOver
+      ? null
+      : chooseAiMove(
+          snapshot.fen,
+          interactive.freePlay?.difficulty ?? 'intermediate',
+          random,
+        );
+    const appliedOpponentMove = opponentMove
+      ? applyMove(game, opponentMove)
+      : null;
+
+    snapshot = game.getSnapshot();
+    const completed = snapshot.status.isGameOver;
+
+    return {
+      ...state,
+      completed,
+      feedback: {
+        kind: completed ? 'complete' : 'correct',
+        message: completed
+          ? `${snapshot.status.message} ${interactive.completion}`
+          : `你走了 ${userMove.san}。${
+              appliedOpponentMove
+                ? ` AI 回应 ${appliedOpponentMove.san}。`
+                : ''
+            }继续自由对弈。`,
+      },
+      fen: snapshot.fen,
+      history,
+      moves: [
+        ...state.moves,
+        userMove,
+        ...(appliedOpponentMove ? [appliedOpponentMove] : []),
+      ],
+      turn: snapshot.status.turn,
+    };
+  }
+
   const step = interactive.steps[state.stepIndex];
 
   if (!step) {
@@ -203,23 +292,38 @@ export function attemptLessonMove(
   const appliedOpponentMove = opponentMove
     ? applyMove(game, opponentMove)
     : null;
-  const snapshot = game.getSnapshot();
+  let snapshot = game.getSnapshot();
   const isFinalStep = state.stepIndex === interactive.steps.length - 1;
+  const startsFreePlay = isFinalStep && interactive.freePlay !== undefined;
   const responseText = appliedOpponentMove
     ? ` 对手回应 ${appliedOpponentMove.san}。`
     : '';
+  const transitionText = step.transition
+    ? ` ${step.transition.message}`
+    : '';
+
+  if (step.transition) {
+    snapshot = new ChessGame(step.transition.fen, {
+      allowMovesAfterGameOver: true,
+    }).getSnapshot();
+  }
 
   return {
     awaitingAdvance: !isFinalStep,
-    completed: isFinalStep,
+    completed: isFinalStep && !startsFreePlay,
     errors: state.errors,
     feedback: {
-      kind: isFinalStep ? 'complete' : 'correct',
-      message: `${step.explanation}${responseText}${
-        isFinalStep ? ` ${interactive.completion}` : ''
+      kind: isFinalStep && !startsFreePlay ? 'complete' : 'correct',
+      message: `${step.explanation}${responseText}${transitionText}${
+        isFinalStep
+          ? startsFreePlay
+            ? ' 导入的开局训练已完成，现在由 AI 自主回应，继续把棋下完。'
+            : ` ${interactive.completion}`
+          : ''
       }`,
     },
     fen: snapshot.fen,
+    freePlay: startsFreePlay,
     history,
     lessonId: state.lessonId,
     moves: [

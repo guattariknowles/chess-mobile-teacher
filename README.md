@@ -34,10 +34,14 @@ Free Chess 是一款面向初学者和本地双人对弈的 Android 国际象棋
 - 系列赛整组棋谱、比分详情和中断续赛
 - 左侧工具侧边栏与底部主导航，减少棋盘顶部按钮拥挤
 - 自定义局面错误列表、问题格标记和终局起点拦截
-- 31 节原创离线课程，覆盖规则、开局、中局和残局
+- 41 节内置离线课程，覆盖规则、开局、经典名局、中局和残局
 - 教学小棋盘、推荐走法和常见错误解释
-- 26 节走法类课程支持互动棋盘、提示、错招反馈、撤回和重来
+- 全部内置课程从标准初始局面进入真人对 AI 的互动教学
+- 7 节原创挑战和 3 节经典名局走法课程
 - 教学对手使用离线本地 AI，并受课程目标与合法走法约束
+- 本地 PGN 训练导入，支持开局、经典名局和残局三种策略
+- 开局训练后继续自由 AI 对弈，经典名局按棋谱，残局直接由 AI 处理
+- 支持训练白方或黑方，导入内容只保存在本机
 - 教学分类栏在不同课程数量下保持固定高度并支持横向滚动
 - 面对面双人模式下远端一方棋子正向显示
 - 三档完全离线的简单 AI：随机合法走法、吃子优先和一步子力评分
@@ -66,7 +70,8 @@ npm run android
 
 阶段 1 棋盘与规则、阶段 2 棋钟、阶段 3 PGN 与棋谱、阶段 4
 本地档案与局面、阶段 5 基础教学、阶段 6 简单本地 AI、阶段 7
-互动教学与分类栏 UI 修订已经完成。下一阶段是小规模挑战与训练数据。
+互动教学、阶段 8 AI 对弈挑战与 PGN 导入已经完成。下一阶段是
+Android 本地 Stockfish。
 
 完整计划见 [ROADMAP.md](ROADMAP.md)。
 
@@ -76,6 +81,7 @@ npm run android
 ## 下载 Android 测试版
 
 - [GitHub Releases](https://github.com/guattariknowles/free-chess/releases)
+- [直接下载 Free Chess 1.8.0 本地测试 APK](https://github.com/guattariknowles/free-chess/releases/download/v1.8.0/free-chess-1.8.0-2026-06-13-local.apk)
 - [直接下载 Free Chess 1.7.0 本地测试 APK](https://github.com/guattariknowles/free-chess/releases/download/v1.7.0/free-chess-1.7.0-2026-06-13-local.apk)
 - [直接下载 Free Chess 1.6.0 本地测试 APK](https://github.com/guattariknowles/free-chess/releases/download/v1.6.0/free-chess-1.6.0-2026-06-13-local.apk)
 - [直接下载 Free Chess 1.5.0 本地测试 APK](https://github.com/guattariknowles/free-chess/releases/download/v1.5.0/free-chess-1.5.0-2026-06-12-local.apk)
@@ -106,6 +112,12 @@ E4B6B2D5D5A45D7B2B40022FB5015FCFA9560246FF7D8FBA3EFB570ADCD43F28
 
 ```text
 48D6DD78B3EB1081642E6EEC382959882B57E3EBF0A3B14EF41DE2406F702F4F
+```
+
+`1.8.0` 本地测试 APK 的 SHA-256：
+
+```text
+C2C460037E23CCE7BC6FF8C1B8DF3D50AA1483C0299B7FAE55A76C77380E47C3
 ```
 
 `1.4.0` EAS APK 的 SHA-256：
