@@ -41,6 +41,11 @@ import {
 } from '../game/gameRecord';
 import { saveGameRecord } from '../game/gameLibraryStorage';
 import {
+  type AiDifficulty,
+  chooseAiMove,
+  getAiGameParticipants,
+} from '../game/localAi';
+import {
   completeSeriesGame,
   getSeriesResultLabel,
   getSeriesStageLabel,
@@ -74,9 +79,24 @@ type GameOutcome = {
   winner?: Color;
 };
 
+type GameMode = 'ai' | 'local';
+type HumanColorChoice = 'black' | 'random' | 'white';
+
 const COLOR_NAMES: Record<Color, string> = {
   b: '黑方',
   w: '白方',
+};
+
+const AI_DIFFICULTY_LABELS: Record<AiDifficulty, string> = {
+  novice: '新手：随机合法走法',
+  beginner: '初级：优先吃子',
+  intermediate: '中级：简单子力评分',
+};
+
+const HUMAN_COLOR_LABELS: Record<HumanColorChoice, string> = {
+  white: '真人执白',
+  black: '真人执黑',
+  random: '随机颜色',
 };
 
 const PROMOTION_OPTIONS: Array<{
@@ -92,6 +112,21 @@ const PROMOTION_OPTIONS: Array<{
 
 function getOpponent(color: Color): Color {
   return color === 'w' ? 'b' : 'w';
+}
+
+function chooseHumanColor(
+  choice: HumanColorChoice,
+  random: () => number = Math.random,
+): Color {
+  if (choice === 'white') {
+    return 'w';
+  }
+
+  if (choice === 'black') {
+    return 'b';
+  }
+
+  return random() < 0.5 ? 'w' : 'b';
 }
 
 function getBoardOutcome(snapshot: GameSnapshot): GameOutcome | null {
@@ -151,6 +186,8 @@ export function PlayScreen() {
   const currentInitialFenRef = useRef<string | undefined>(undefined);
   const currentRecordIdRef = useRef<string | null>(null);
   const completedRecordRef = useRef<GameRecord | null>(null);
+  const aiTaskRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aiTaskVersionRef = useRef(0);
   const clockRef = useRef(
     createClockState(NO_CLOCK_CONFIG, Date.now()),
   );
@@ -182,6 +219,24 @@ export function PlayScreen() {
   const [blackPlayer, setBlackPlayer] = useState<UserProfile | null>(null);
   const [pendingWhiteId, setPendingWhiteId] = useState<string | null>(null);
   const [pendingBlackId, setPendingBlackId] = useState<string | null>(null);
+  const [gameMode, setGameMode] = useState<GameMode>('local');
+  const [pendingGameMode, setPendingGameMode] =
+    useState<GameMode>('local');
+  const [aiDifficulty, setAiDifficulty] =
+    useState<AiDifficulty>('novice');
+  const [pendingAiDifficulty, setPendingAiDifficulty] =
+    useState<AiDifficulty>('novice');
+  const [humanColorChoice, setHumanColorChoice] =
+    useState<HumanColorChoice>('white');
+  const [pendingHumanColorChoice, setPendingHumanColorChoice] =
+    useState<HumanColorChoice>('white');
+  const [humanPlayer, setHumanPlayer] = useState<UserProfile | null>(null);
+  const [pendingHumanId, setPendingHumanId] = useState<string | null>(
+    null,
+  );
+  const [aiColor, setAiColor] = useState<Color | null>(null);
+  const [aiThinking, setAiThinking] = useState(false);
+  const [gameSession, setGameSession] = useState(0);
   const [activeSeries, setActiveSeries] = useState<SeriesRecord | null>(null);
   const [seriesDetail, setSeriesDetail] = useState<SeriesRecord | null>(null);
   const [reviewRecord, setReviewRecord] = useState<GameRecord | null>(null);
@@ -206,6 +261,17 @@ export function PlayScreen() {
   );
   const clockEnabled = isClockEnabled(clock);
   const clockPaused = clockEnabled && clock.isPaused;
+  const aiParticipants = useMemo(
+    () =>
+      gameMode === 'ai' && humanPlayer && aiColor
+        ? getAiGameParticipants(
+            humanPlayer,
+            aiDifficulty,
+            getOpponent(aiColor),
+          )
+        : null,
+    [aiColor, aiDifficulty, gameMode, humanPlayer],
+  );
 
   const applyClockState = (next: ClockState) => {
     clockRef.current = next;
@@ -215,6 +281,30 @@ export function PlayScreen() {
   const clearSelection = () => {
     setSelectedSquare(null);
     setPendingPromotion(null);
+  };
+
+  const cancelAiTask = () => {
+    aiTaskVersionRef.current += 1;
+
+    if (aiTaskRef.current) {
+      clearTimeout(aiTaskRef.current);
+      aiTaskRef.current = null;
+    }
+
+    setAiThinking(false);
+  };
+
+  const getParticipant = (color: Color) => {
+    if (aiParticipants) {
+      return aiParticipants[color];
+    }
+
+    const profile = color === 'w' ? whitePlayer : blackPlayer;
+    return {
+      isAi: false,
+      name: profile?.name ?? COLOR_NAMES[color],
+      profileId: profile?.id,
+    };
   };
 
   const getProfileFromSeries = (
@@ -235,19 +325,23 @@ export function PlayScreen() {
   function buildCurrentRecord(): GameRecord {
     const result = getOutcomeResult(outcome);
     const currentSeriesGame = activeSeries?.currentGame;
+    const white = getParticipant('w');
+    const black = getParticipant('b');
     const pgn = gameRef.current.getPgn({
-      Black: blackPlayer?.name ?? '黑方',
+      Black: black.name,
       Date: getPgnDate(gameStartedAtRef.current),
       Event: activeSeries
         ? `Free Chess ${activeSeries.title}`
-        : 'Free Chess 本地对局',
+        : gameMode === 'ai'
+          ? 'Free Chess 人机对局'
+          : 'Free Chess 本地对局',
       Result: result,
       Site: 'Local',
       TimeControl: getTimeControl(clockConfig),
-      White: whitePlayer?.name ?? '白方',
+      White: white.name,
     });
     const record = createGameRecord({
-      blackProfileId: blackPlayer?.id,
+      blackProfileId: black.profileId,
       clockLabel: getClockConfigLabel(clockConfig),
       createdAt: gameStartedAtRef.current.toISOString(),
       id: currentRecordIdRef.current ?? undefined,
@@ -257,7 +351,7 @@ export function PlayScreen() {
       seriesGameNumber: currentSeriesGame?.gameNumber,
       seriesId: activeSeries?.id,
       source: 'played',
-      whiteProfileId: whitePlayer?.id,
+      whiteProfileId: white.profileId,
     });
 
     currentRecordIdRef.current = record.id;
@@ -314,7 +408,9 @@ export function PlayScreen() {
     gameStartedAtRef.current = new Date(current.startedAt);
     currentRecordIdRef.current = null;
     completedRecordRef.current = null;
+    setGameSession((value) => value + 1);
     clockHistoryRef.current = [];
+    cancelAiTask();
     const restoredClock = current.clockState
       ? restoreClock(
           {
@@ -332,6 +428,9 @@ export function PlayScreen() {
       getProfileFromSeries(series, current.whiteProfileId),
       getProfileFromSeries(series, current.blackProfileId),
     );
+    setGameMode('local');
+    setAiColor(null);
+    setHumanPlayer(null);
     setActiveSeries(series);
     setOutcome(null);
     setResultVisible(false);
@@ -360,6 +459,12 @@ export function PlayScreen() {
           resumeSeries(storedSeries);
         } else if (loadedProfiles.length >= 2) {
           applyPlayers(loadedProfiles[0], loadedProfiles[1]);
+        } else if (loadedProfiles.length === 1) {
+          setWhitePlayer(loadedProfiles[0]);
+          setBlackPlayer(null);
+          setHumanPlayer(loadedProfiles[0]);
+          setPendingHumanId(loadedProfiles[0].id);
+          setPlayerSetupVisible(true);
         } else {
           setProfilesVisible(true);
         }
@@ -511,9 +616,101 @@ export function PlayScreen() {
     }
   };
 
+  useEffect(() => {
+    cancelAiTask();
+
+    if (
+      gameMode !== 'ai' ||
+      !aiColor ||
+      snapshot.status.turn !== aiColor ||
+      snapshot.status.isGameOver ||
+      outcome ||
+      clock.timedOutColor ||
+      (clockEnabled && clock.isPaused)
+    ) {
+      return;
+    }
+
+    const scheduledFen = snapshot.fen;
+    const taskVersion = aiTaskVersionRef.current;
+    setAiThinking(true);
+    setFeedback('AI 正在思考');
+
+    aiTaskRef.current = setTimeout(() => {
+      aiTaskRef.current = null;
+
+      if (
+        taskVersion !== aiTaskVersionRef.current ||
+        gameRef.current.getSnapshot().fen !== scheduledFen ||
+        gameRef.current.getSnapshot().status.turn !== aiColor ||
+        gameRef.current.getSnapshot().status.isGameOver
+      ) {
+        return;
+      }
+
+      const settledClock = tickClock(clockRef.current, Date.now());
+      applyClockState(settledClock);
+
+      if (
+        settledClock.timedOutColor ||
+        (isClockEnabled(settledClock) && settledClock.isPaused)
+      ) {
+        setAiThinking(false);
+        return;
+      }
+
+      const move = chooseAiMove(
+        scheduledFen,
+        aiDifficulty,
+      );
+      setAiThinking(false);
+
+      if (!move) {
+        return;
+      }
+
+      commitMove(move.from, move.to, move.promotion);
+    }, 450);
+
+    return () => {
+      if (aiTaskRef.current) {
+        clearTimeout(aiTaskRef.current);
+        aiTaskRef.current = null;
+      }
+      aiTaskVersionRef.current += 1;
+    };
+  }, [
+    aiColor,
+    aiDifficulty,
+    clock.isPaused,
+    clock.timedOutColor,
+    gameMode,
+    gameSession,
+    outcome,
+    snapshot.fen,
+  ]);
+
+  useEffect(
+    () => () => {
+      aiTaskVersionRef.current += 1;
+      if (aiTaskRef.current) {
+        clearTimeout(aiTaskRef.current);
+      }
+    },
+    [],
+  );
+
   const handleSquarePress = (square: Square) => {
     if (outcome || snapshot.status.isGameOver) {
       setFeedback('本局已经结束，请重新开始或回顾棋局');
+      return;
+    }
+
+    if (
+      gameMode === 'ai' &&
+      (snapshot.status.turn === aiColor || aiThinking)
+    ) {
+      setFeedback('请等待 AI 完成走棋');
       return;
     }
 
@@ -580,6 +777,64 @@ export function PlayScreen() {
   };
 
   const handleUndo = (color: Color) => {
+    if (gameMode === 'ai') {
+      if (color === aiColor) {
+        setFeedback('AI 一侧不能操作悔棋');
+        return;
+      }
+
+      if (!snapshot.canUndo) {
+        setFeedback('当前没有可以撤回的走法');
+        return;
+      }
+
+      if (outcome?.reason === 'resignation' || outcome?.reason === 'timeout') {
+        setFeedback('投降或超时后不能悔棋，请重新开始');
+        return;
+      }
+
+      if (
+        aiColor === 'w' &&
+        snapshot.moveCount === 1 &&
+        snapshot.status.turn === 'b'
+      ) {
+        setFeedback('真人尚未走棋，不能撤回 AI 的第一步');
+        return;
+      }
+
+      cancelAiTask();
+      const undoCount = snapshot.status.turn === aiColor ? 1 : 2;
+      let nextSnapshot = snapshot;
+      let previousClock: ClockState | undefined;
+
+      for (
+        let index = 0;
+        index < undoCount && nextSnapshot.canUndo;
+        index += 1
+      ) {
+        previousClock = clockHistoryRef.current.pop() ?? previousClock;
+        nextSnapshot = gameRef.current.undo();
+      }
+
+      let nextClock = clockRef.current;
+      if (previousClock) {
+        nextClock = restoreClock(previousClock, Date.now());
+        applyClockState(nextClock);
+      }
+
+      setSnapshot(nextSnapshot);
+      setOutcome(null);
+      setResultVisible(false);
+      completedRecordRef.current = null;
+      clearSelection();
+      setFeedback(
+        undoCount === 1
+          ? '已撤回真人刚才的一步'
+          : '已撤回 AI 回应和真人上一步',
+      );
+      return;
+    }
+
     if (snapshot.status.turn !== color) {
       setFeedback(`现在应由${COLOR_NAMES[snapshot.status.turn]}操作悔棋`);
       return;
@@ -619,6 +874,7 @@ export function PlayScreen() {
     initialFen: string | null = currentInitialFenRef.current ?? null,
     players?: { black: UserProfile; white: UserProfile },
   ) => {
+    cancelAiTask();
     const nextClock = createClockState(config, Date.now());
     const normalizedFen = initialFen ?? undefined;
 
@@ -651,7 +907,51 @@ export function PlayScreen() {
     players?: { black: UserProfile; white: UserProfile },
   ) => {
     setActiveSeries(null);
+    setGameMode('local');
+    setAiColor(null);
+    setHumanPlayer(null);
     startNewGame(clockConfig, null, players);
+  };
+
+  const startAiGame = (
+    human: UserProfile,
+    difficulty: AiDifficulty,
+    colorChoice: HumanColorChoice,
+    config = clockConfig,
+  ) => {
+    const humanColor = chooseHumanColor(colorChoice);
+    const nextAiColor = getOpponent(humanColor);
+
+    setActiveSeries(null);
+    setGameMode('ai');
+    setAiDifficulty(difficulty);
+    setHumanColorChoice(colorChoice);
+    setHumanPlayer(human);
+    setAiColor(nextAiColor);
+    setWhitePlayer(humanColor === 'w' ? human : null);
+    setBlackPlayer(humanColor === 'b' ? human : null);
+    setPendingHumanId(human.id);
+    startNewGame(config, null);
+    setFlipped(humanColor === 'b');
+    setFeedback(
+      config.initialTimeMs === null
+        ? `人机对局已开始，${human.name}执${humanColor === 'w' ? '白' : '黑'}`
+        : `人机对局已准备，${human.name}执${humanColor === 'w' ? '白' : '黑'}，请点击“开始棋钟”`,
+    );
+  };
+
+  const restartCurrentGame = (config = clockConfig) => {
+    if (gameMode === 'ai' && humanPlayer) {
+      startAiGame(
+        humanPlayer,
+        aiDifficulty,
+        humanColorChoice,
+        config,
+      );
+      return;
+    }
+
+    startNewGame(config);
   };
 
   const startSeriesCurrentGame = (series: SeriesRecord) => {
@@ -675,6 +975,9 @@ export function PlayScreen() {
     };
 
     setActiveSeries(preparedSeries);
+    setGameMode('local');
+    setAiColor(null);
+    setHumanPlayer(null);
     saveSeriesRecord(preparedSeries).catch(() => {
       setFeedback('本局已开始，但系列赛断点保存失败');
     });
@@ -698,9 +1001,20 @@ export function PlayScreen() {
         return;
       }
 
-      if (loaded.length < 2) {
+      if (loaded.length === 0) {
         setProfilesVisible(true);
-        setFeedback('本地对战前必须先创建两个不同档案');
+        setFeedback('开始对局前必须先创建本地档案');
+        return;
+      }
+
+      if (loaded.length === 1) {
+        setWhitePlayer(loaded[0]);
+        setBlackPlayer(null);
+        setHumanPlayer(loaded[0]);
+        setPendingHumanId(loaded[0].id);
+        setProfilesVisible(false);
+        setPlayerSetupVisible(true);
+        setFeedback('一个档案可以开始人机对局；本地双人需要两个档案');
         return;
       }
 
@@ -724,20 +1038,39 @@ export function PlayScreen() {
   };
 
   const applyPlayerSetup = () => {
-    const white = profiles.find(
-      (profile) => profile.id === pendingWhiteId,
-    );
-    const black = profiles.find(
-      (profile) => profile.id === pendingBlackId,
-    );
-
-    if (!white || !black || white.id === black.id) {
-      setFeedback('白方和黑方必须选择两个不同档案');
-      return;
-    }
-
     const apply = () => {
       setPlayerSetupVisible(false);
+
+      if (pendingGameMode === 'ai') {
+        const human = profiles.find(
+          (profile) => profile.id === pendingHumanId,
+        );
+
+        if (!human) {
+          setFeedback('请选择一个真人档案');
+          return;
+        }
+
+        startAiGame(
+          human,
+          pendingAiDifficulty,
+          pendingHumanColorChoice,
+        );
+        return;
+      }
+
+      const white = profiles.find(
+        (profile) => profile.id === pendingWhiteId,
+      );
+      const black = profiles.find(
+        (profile) => profile.id === pendingBlackId,
+      );
+
+      if (!white || !black || white.id === black.id) {
+        setFeedback('本地双人需要选择两个不同档案');
+        return;
+      }
+
       startStandardGame({ black, white });
     };
 
@@ -747,8 +1080,8 @@ export function PlayScreen() {
     }
 
     Alert.alert(
-      '更换玩家并开始新对局？',
-      '当前棋局不会继续，新棋局会记录到新选择的双方档案。',
+      '切换模式并开始新对局？',
+      '当前棋局不会继续，新棋局会使用刚才选择的模式和参与者。',
       [
         { style: 'cancel', text: '取消' },
         { onPress: apply, style: 'destructive', text: '开始新对局' },
@@ -761,21 +1094,31 @@ export function PlayScreen() {
       return;
     }
 
+    if (profiles.length === 0) {
+      setProfilesVisible(true);
+      setFeedback('请先创建至少一个本地档案');
+      return;
+    }
+
+    setPendingGameMode(gameMode);
     setPendingWhiteId(whitePlayer?.id ?? profiles[0]?.id ?? null);
     setPendingBlackId(blackPlayer?.id ?? profiles[1]?.id ?? null);
+    setPendingHumanId(humanPlayer?.id ?? profiles[0]?.id ?? null);
+    setPendingAiDifficulty(aiDifficulty);
+    setPendingHumanColorChoice(humanColorChoice);
     setPlayerSetupVisible(true);
   };
 
   const handleReset = () => {
     if (!snapshot.canUndo && !outcome) {
-      startNewGame();
+      restartCurrentGame();
       return;
     }
 
     Alert.alert('重新开始？', '当前对局和棋钟会被清除。', [
       { style: 'cancel', text: '取消' },
       {
-        onPress: () => startNewGame(),
+        onPress: () => restartCurrentGame(),
         style: 'destructive',
         text: '重新开始',
       },
@@ -785,7 +1128,7 @@ export function PlayScreen() {
   const handleApplyClockConfig = (config: ClockConfig) => {
     const apply = () => {
       setClockSettingsVisible(false);
-      startNewGame(config);
+      restartCurrentGame(config);
     };
 
     if (!snapshot.canUndo && !outcome) {
@@ -817,6 +1160,7 @@ export function PlayScreen() {
         snapshot.moveCount === 0 ? '棋钟已开始' : '棋钟继续计时',
       );
     } else {
+      cancelAiTask();
       const nextClock = pauseClock(clock, now);
       applyClockState(nextClock);
       clearSelection();
@@ -829,6 +1173,11 @@ export function PlayScreen() {
 
   const handleResign = (color: Color) => {
     if (outcome) {
+      return;
+    }
+
+    if (gameMode === 'ai' && color === aiColor) {
+      setFeedback('AI 不会主动认输');
       return;
     }
 
@@ -916,7 +1265,7 @@ export function PlayScreen() {
           setReviewRecord(null);
           setLibraryVisible(reviewReturn === 'library');
         }}
-        onRestart={() => startNewGame()}
+        onRestart={() => restartCurrentGame()}
         record={reviewRecord}
       />
     );
@@ -968,10 +1317,55 @@ export function PlayScreen() {
 
   const undoBlockedByOutcome =
     outcome?.reason === 'resignation' || outcome?.reason === 'timeout';
+  const humanUndoDisabled =
+    !snapshot.canUndo ||
+    undoBlockedByOutcome ||
+    (aiColor === 'w' &&
+      snapshot.moveCount === 1 &&
+      snapshot.status.turn === 'b');
+  const whiteParticipant = getParticipant('w');
+  const blackParticipant = getParticipant('b');
+  const topPanelColor: Color =
+    gameMode === 'ai' && aiColor ? aiColor : 'b';
+  const bottomPanelColor = getOpponent(topPanelColor);
+  const renderPlayerPanel = (color: Color, facingAway = false) => {
+    const participant =
+      color === 'w' ? whiteParticipant : blackParticipant;
+    const isAiSide = gameMode === 'ai' && aiColor === color;
+
+    return (
+      <PlayerClockPanel
+        color={color}
+        disabledResign={Boolean(outcome) || isAiSide}
+        disabledUndo={
+          gameMode === 'ai'
+            ? isAiSide || humanUndoDisabled
+            : !snapshot.canUndo ||
+              snapshot.status.turn !== color ||
+              undoBlockedByOutcome
+        }
+        facingAway={facingAway && gameMode === 'local'}
+        isActive={snapshot.status.turn === color && !outcome}
+        isPaused={clockPaused}
+        onResign={() => handleResign(color)}
+        onUndo={() => handleUndo(color)}
+        playerName={participant.name}
+        statusLabel={
+          isAiSide
+            ? aiThinking
+              ? 'AI 正在思考'
+              : 'AI 对手'
+            : undefined
+        }
+        timeMs={color === 'w' ? clock.whiteTimeMs : clock.blackTimeMs}
+        timedOut={clock.timedOutColor === color}
+      />
+    );
+  };
   const subtitle = activeSeries
     ? `${getSeriesResultLabel(activeSeries)} · 已走 ${snapshot.moveCount} 步`
-    : `${whitePlayer?.name ?? '白方'} vs ${
-        blackPlayer?.name ?? '黑方'
+    : `${whiteParticipant.name} vs ${
+        blackParticipant.name
       } · ${getClockConfigLabel(clockConfig)} · 已走 ${
         snapshot.moveCount
       } 步`;
@@ -1003,28 +1397,12 @@ export function PlayScreen() {
           </View>
         </View>
 
-        <PlayerClockPanel
-          color="b"
-          disabledResign={Boolean(outcome)}
-          disabledUndo={
-            !snapshot.canUndo ||
-            snapshot.status.turn !== 'b' ||
-            undoBlockedByOutcome
-          }
-          facingAway
-          isActive={snapshot.status.turn === 'b' && !outcome}
-          isPaused={clockPaused}
-          onResign={() => handleResign('b')}
-          onUndo={() => handleUndo('b')}
-          playerName={blackPlayer?.name}
-          timeMs={clock.blackTimeMs}
-          timedOut={clock.timedOutColor === 'b'}
-        />
+        {renderPlayerPanel(topPanelColor, true)}
 
         <View style={styles.boardWrap}>
           <ChessBoard
             board={snapshot.board}
-            faceToFacePieces
+            faceToFacePieces={gameMode === 'local'}
             flipped={flipped}
             lastMove={snapshot.lastMove}
             legalMoves={legalMoves}
@@ -1034,22 +1412,7 @@ export function PlayScreen() {
           />
         </View>
 
-        <PlayerClockPanel
-          color="w"
-          disabledResign={Boolean(outcome)}
-          disabledUndo={
-            !snapshot.canUndo ||
-            snapshot.status.turn !== 'w' ||
-            undoBlockedByOutcome
-          }
-          isActive={snapshot.status.turn === 'w' && !outcome}
-          isPaused={clockPaused}
-          onResign={() => handleResign('w')}
-          onUndo={() => handleUndo('w')}
-          playerName={whitePlayer?.name}
-          timeMs={clock.whiteTimeMs}
-          timedOut={clock.timedOutColor === 'w'}
-        />
+        {renderPlayerPanel(bottomPanelColor)}
 
         <View
           accessibilityLiveRegion="polite"
@@ -1110,7 +1473,7 @@ export function PlayScreen() {
         />
         <BottomNavigationItem
           disabled={Boolean(activeSeries)}
-          label="玩家"
+          label="模式"
           onPress={openPlayerSetup}
         />
         <BottomNavigationItem
@@ -1144,8 +1507,12 @@ export function PlayScreen() {
               这些功能与当前棋盘相关，使用后仍可返回本局。
             </Text>
             <DrawerItem
-              disabled={Boolean(activeSeries)}
-              detail="摆放棋子、导入 FEN 或从指定局面开局"
+              disabled={Boolean(activeSeries) || gameMode === 'ai'}
+              detail={
+                gameMode === 'ai'
+                  ? '人机模式不支持自由局面，请先切回本地双人'
+                  : '摆放棋子、导入 FEN 或从指定局面开局'
+              }
               label="自由局面"
               onPress={() => {
                 setDrawerVisible(false);
@@ -1153,8 +1520,11 @@ export function PlayScreen() {
               }}
             />
             <DrawerItem
+              disabled={gameMode === 'ai'}
               detail={
-                activeSeries
+                gameMode === 'ai'
+                  ? '人机模式不支持系列赛，请先切回本地双人'
+                  : activeSeries
                   ? '查看当前比分、局次和中断续赛状态'
                   : '创建 BO2 至 BO6 本地系列赛'
               }
@@ -1186,9 +1556,11 @@ export function PlayScreen() {
                 setProfilesVisible(true);
               }}
             />
-            {activeSeries ? (
+            {activeSeries || gameMode === 'ai' ? (
               <Text style={styles.drawerNote}>
-                系列赛进行中时，玩家、自由局面和棋钟设置保持锁定，避免改变比赛规则。
+                {activeSeries
+                  ? '系列赛进行中时，模式、自由局面和棋钟设置保持锁定，避免改变比赛规则。'
+                  : '人机模式下自由局面和系列赛不可用，切回本地双人后即可使用。'}
               </Text>
             ) : null}
           </View>
@@ -1215,39 +1587,131 @@ export function PlayScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View accessibilityViewIsModal style={styles.dialog}>
-            <Text style={styles.dialogTitle}>选择本地对战玩家</Text>
+            <Text style={styles.dialogTitle}>选择对局模式</Text>
             <ScrollView style={styles.profileChooserScroll}>
-              <Text style={styles.playerSideLabel}>白方</Text>
+              <Text style={styles.playerSideLabel}>模式</Text>
               <View style={styles.profileChoiceGrid}>
-                {profiles.map((profile) => (
-                  <ProfileChoice
-                    disabled={profile.id === pendingBlackId}
-                    key={`white-${profile.id}`}
-                    label={profile.name}
-                    onPress={() => setPendingWhiteId(profile.id)}
-                    selected={profile.id === pendingWhiteId}
-                  />
-                ))}
+                <ProfileChoice
+                  disabled={profiles.length < 2}
+                  label="本地双人"
+                  onPress={() => setPendingGameMode('local')}
+                  selected={pendingGameMode === 'local'}
+                />
+                <ProfileChoice
+                  disabled={profiles.length < 1}
+                  label="人机对局"
+                  onPress={() => setPendingGameMode('ai')}
+                  selected={pendingGameMode === 'ai'}
+                />
               </View>
-              <Text style={styles.playerSideLabel}>黑方</Text>
-              <View style={styles.profileChoiceGrid}>
-                {profiles.map((profile) => (
-                  <ProfileChoice
-                    disabled={profile.id === pendingWhiteId}
-                    key={`black-${profile.id}`}
-                    label={profile.name}
-                    onPress={() => setPendingBlackId(profile.id)}
-                    selected={profile.id === pendingBlackId}
-                  />
-                ))}
-              </View>
+
+              {pendingGameMode === 'local' ? (
+                <>
+                  <Text style={styles.playerSideLabel}>白方</Text>
+                  <View style={styles.profileChoiceGrid}>
+                    {profiles.map((profile) => (
+                      <ProfileChoice
+                        disabled={profile.id === pendingBlackId}
+                        key={`white-${profile.id}`}
+                        label={profile.name}
+                        onPress={() => setPendingWhiteId(profile.id)}
+                        selected={profile.id === pendingWhiteId}
+                      />
+                    ))}
+                  </View>
+                  <Text style={styles.playerSideLabel}>黑方</Text>
+                  <View style={styles.profileChoiceGrid}>
+                    {profiles.map((profile) => (
+                      <ProfileChoice
+                        disabled={profile.id === pendingWhiteId}
+                        key={`black-${profile.id}`}
+                        label={profile.name}
+                        onPress={() => setPendingBlackId(profile.id)}
+                        selected={profile.id === pendingBlackId}
+                      />
+                    ))}
+                  </View>
+                  {profiles.length < 2 ? (
+                    <Text style={styles.modeNote}>
+                      本地双人需要两个不同档案。
+                    </Text>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <Text style={styles.playerSideLabel}>真人档案</Text>
+                  <View style={styles.profileChoiceGrid}>
+                    {profiles.map((profile) => (
+                      <ProfileChoice
+                        disabled={false}
+                        key={`human-${profile.id}`}
+                        label={profile.name}
+                        onPress={() => setPendingHumanId(profile.id)}
+                        selected={profile.id === pendingHumanId}
+                      />
+                    ))}
+                  </View>
+                  <Text style={styles.playerSideLabel}>AI 难度</Text>
+                  <View style={styles.profileChoiceGrid}>
+                    {(
+                      Object.keys(
+                        AI_DIFFICULTY_LABELS,
+                      ) as AiDifficulty[]
+                    ).map((difficulty) => (
+                      <ProfileChoice
+                        disabled={false}
+                        key={difficulty}
+                        label={AI_DIFFICULTY_LABELS[difficulty]}
+                        onPress={() =>
+                          setPendingAiDifficulty(difficulty)
+                        }
+                        selected={pendingAiDifficulty === difficulty}
+                      />
+                    ))}
+                  </View>
+                  <Text style={styles.playerSideLabel}>真人执色</Text>
+                  <View style={styles.profileChoiceGrid}>
+                    {(
+                      Object.keys(
+                        HUMAN_COLOR_LABELS,
+                      ) as HumanColorChoice[]
+                    ).map((choice) => (
+                      <ProfileChoice
+                        disabled={false}
+                        key={choice}
+                        label={HUMAN_COLOR_LABELS[choice]}
+                        onPress={() =>
+                          setPendingHumanColorChoice(choice)
+                        }
+                        selected={pendingHumanColorChoice === choice}
+                      />
+                    ))}
+                  </View>
+                  <Text style={styles.modeNote}>
+                    AI 完全离线运行。随机颜色会在每次重新开始时重新抽取。
+                  </Text>
+                </>
+              )}
             </ScrollView>
             <Pressable
               accessibilityRole="button"
               onPress={applyPlayerSetup}
-              style={styles.primaryButton}
+              style={[
+                styles.primaryButton,
+                ((pendingGameMode === 'local' &&
+                  profiles.length < 2) ||
+                  (pendingGameMode === 'ai' &&
+                    profiles.length < 1)) &&
+                  styles.disabledButton,
+              ]}
+              disabled={
+                (pendingGameMode === 'local' && profiles.length < 2) ||
+                (pendingGameMode === 'ai' && profiles.length < 1)
+              }
             >
-              <Text style={styles.primaryButtonText}>应用并开始新对局</Text>
+              <Text style={styles.primaryButtonText}>
+                应用并开始新对局
+              </Text>
             </Pressable>
             <View style={styles.playerDialogFooter}>
               <Pressable
@@ -1340,7 +1804,7 @@ export function PlayScreen() {
                   return;
                 }
 
-                startNewGame();
+                restartCurrentGame();
               }}
               style={styles.primaryButton}
             >
@@ -1518,7 +1982,7 @@ function ProfileChoice({
       ]}
     >
       <Text
-        numberOfLines={1}
+        numberOfLines={2}
         style={[
           styles.profileChoiceText,
           disabled && styles.disabledButtonText,
@@ -1925,7 +2389,9 @@ const styles = StyleSheet.create({
     borderColor: '#4a5149',
     borderRadius: 8,
     borderWidth: 1,
-    minWidth: '31%',
+    justifyContent: 'center',
+    minHeight: 42,
+    minWidth: '47%',
     paddingHorizontal: 9,
     paddingVertical: 9,
   },
@@ -1937,6 +2403,13 @@ const styles = StyleSheet.create({
     color: '#efede4',
     fontSize: 11,
     fontWeight: '700',
+    textAlign: 'center',
+  },
+  modeNote: {
+    color: '#aeb5ac',
+    fontSize: 10,
+    lineHeight: 16,
+    marginTop: 12,
   },
   playerDialogFooter: {
     flexDirection: 'row',

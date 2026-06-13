@@ -13,6 +13,7 @@ type PlayerClockPanelProps = {
   onResign: () => void;
   onUndo: () => void;
   playerName?: string;
+  statusLabel?: string;
   timeMs: number | null;
   timedOut: boolean;
 };
@@ -32,6 +33,7 @@ export function PlayerClockPanel({
   onResign,
   onUndo,
   playerName,
+  statusLabel,
   timeMs,
   timedOut,
 }: PlayerClockPanelProps) {
@@ -46,6 +48,10 @@ export function PlayerClockPanel({
     stateLabel = '棋钟暂停';
   } else if (isActive) {
     stateLabel = '正在走棋';
+  }
+
+  if (statusLabel) {
+    stateLabel = statusLabel;
   }
 
   return (
