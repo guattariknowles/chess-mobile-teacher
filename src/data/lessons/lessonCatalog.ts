@@ -6,10 +6,41 @@ export type LessonCategory =
   | 'strategy'
   | 'endgames';
 
+export type InteractiveLessonMove = {
+  from: Square;
+  promotion?: 'b' | 'n' | 'q' | 'r';
+  to: Square;
+};
+
+export type InteractiveLessonOpponent = {
+  allowedMoves?: InteractiveLessonMove[];
+  difficulty: 'novice' | 'beginner' | 'intermediate';
+  mode: 'local-ai' | 'scripted';
+};
+
+export type InteractiveLessonStep = {
+  acceptedMoves: InteractiveLessonMove[];
+  explanation: string;
+  hint: string;
+  id: string;
+  incorrectFeedback: string;
+  instruction: string;
+  opponent?: InteractiveLessonOpponent;
+};
+
+export type InteractiveLesson = {
+  completion: string;
+  goal: string;
+  intro: string;
+  startFen: string;
+  steps: InteractiveLessonStep[];
+};
+
 export type ChessLesson = {
   category: LessonCategory;
   fen: string;
   id: string;
+  interactive?: InteractiveLesson;
   level: '入门' | '基础' | '进阶';
   mistake?: { explanation: string; label: string };
   points: string[];
@@ -35,7 +66,113 @@ export const LESSON_CATEGORY_LABELS: Record<LessonCategory, string> = {
 const START_FEN =
   'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
-export const LESSONS: ChessLesson[] = [
+const ITALIAN_INTERACTIVE: InteractiveLesson = {
+  completion:
+    '你已经走出意大利开局的代表性前三步，并理解了占中心、发展马和发展象的顺序。',
+  goal: '走出 1.e4 e5 2.Nf3 Nc6 3.Bc4。',
+  intro: '由你执白。黑方按固定主线回应，方便反复练习同一套发展思路。',
+  startFen: START_FEN,
+  steps: [
+    {
+      acceptedMoves: [{ from: 'e2', to: 'e4' }],
+      explanation: 'e4 占据中心，同时打开后和 f1 象的线路。',
+      hint: '选择 e2 白兵，把它走到 e4。',
+      id: 'claim-center',
+      incorrectFeedback: '先用 e 兵占据中心，不要急着移动边兵或后。',
+      instruction: '第一步：用兵占据中心，并打开王翼象的线路。',
+      opponent: {
+        allowedMoves: [{ from: 'e7', to: 'e5' }],
+        difficulty: 'intermediate',
+        mode: 'local-ai',
+      },
+    },
+    {
+      acceptedMoves: [{ from: 'g1', to: 'f3' }],
+      explanation: 'Nf3 发展王翼马，并直接攻击黑方 e5 兵。',
+      hint: '选择 g1 的马，寻找能攻击 e5 的发展格。',
+      id: 'develop-knight',
+      incorrectFeedback: '这一步应先发展王翼马，并给 e5 兵施加压力。',
+      instruction: '第二步：发展一个棋子，同时攻击黑方中心兵。',
+      opponent: {
+        allowedMoves: [{ from: 'b8', to: 'c6' }],
+        difficulty: 'intermediate',
+        mode: 'local-ai',
+      },
+    },
+    {
+      acceptedMoves: [{ from: 'f1', to: 'c4' }],
+      explanation: 'Bc4 发展象、协助控制中心，并把目光放到较薄弱的 f7。',
+      hint: '把 f1 的象放到一条能看向 f7 的斜线上。',
+      id: 'develop-bishop',
+      incorrectFeedback: '目标是发展王翼象，并让它对准 f7。',
+      instruction: '第三步：发展王翼象，并关注黑方 f7。',
+    },
+  ],
+};
+
+const CENTER_INTERACTIVE: InteractiveLesson = {
+  completion:
+    '你完成了中心计划选择：用中心兵争取空间，再观察对手的发展。',
+  goal: '选择一个能立即争夺中心的首步。',
+  intro:
+    '这是候选着法练习。e4 和 d4 都符合目标；黑方会从课程允许的回应中调用本地 AI。',
+  startFen: START_FEN,
+  steps: [
+    {
+      acceptedMoves: [
+        { from: 'e2', to: 'e4' },
+        { from: 'd2', to: 'd4' },
+      ],
+      explanation: '正确。中心兵前进既争取空间，也为后方棋子打开线路。',
+      hint: '考虑 e 兵或 d 兵前进两格。',
+      id: 'choose-center-plan',
+      incorrectFeedback: '这一步没有直接争夺中心。请比较 e4 和 d4 的作用。',
+      instruction: '从候选着法中选择一个能立即争夺中心的计划。',
+      opponent: {
+        allowedMoves: [{ from: 'g8', to: 'f6' }],
+        difficulty: 'intermediate',
+        mode: 'local-ai',
+      },
+    },
+  ],
+};
+
+const KING_PAWN_INTERACTIVE: InteractiveLesson = {
+  completion:
+    '你先让王占据关键格，再推进兵；这比立即推兵保留了更多胜棋机会。',
+  goal: '先改善王的位置，再推进通路兵。',
+  intro:
+    '由你执白。黑方回应由本地 AI 在课程限定的合法走法中选择，避免偏离本课目标。',
+  startFen: '8/4k3/8/4K3/4P3/8/8/8 w - - 0 1',
+  steps: [
+    {
+      acceptedMoves: [{ from: 'e5', to: 'd5' }],
+      explanation: 'Kd5 让白王走到兵的前方，争夺更重要的关键格。',
+      hint: '先移动白王，不要立刻推 e 兵。',
+      id: 'activate-king',
+      incorrectFeedback: '残局中王是主动棋子。先让王走到兵的前方。',
+      instruction: '第一步：让白王占据兵前方的关键格。',
+      opponent: {
+        allowedMoves: [
+          { from: 'e7', to: 'd7' },
+          { from: 'e7', to: 'f7' },
+        ],
+        difficulty: 'beginner',
+        mode: 'local-ai',
+      },
+    },
+    {
+      acceptedMoves: [{ from: 'e4', to: 'e5' }],
+      explanation: '现在推进 e5，白王仍在前方保护通路兵。',
+      hint: '王的位置改善后，可以推进 e4 的兵。',
+      id: 'advance-pawn',
+      incorrectFeedback: '保持王在前方，当前目标是把 e4 兵向前推进一格。',
+      instruction: '第二步：在王的保护下推进通路兵。',
+    },
+  ],
+};
+
+const LESSON_CATALOG: ChessLesson[] = [
   {
     category: 'basics',
     fen: START_FEN,
@@ -211,6 +348,7 @@ export const LESSONS: ChessLesson[] = [
     category: 'openings',
     fen: 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3',
     id: 'opening-italian',
+    interactive: ITALIAN_INTERACTIVE,
     level: '进阶',
     mistake: { explanation: '3.d3 可以下，但暂时没有让象主动瞄准 f7，发展较慢。', label: '3.d3?!' },
     points: ['白象到 c4，关注 f7。', '继续易位并发展其他棋子。', '不要只盯着一次早期攻击。'],
@@ -307,6 +445,7 @@ export const LESSONS: ChessLesson[] = [
     category: 'strategy',
     fen: START_FEN,
     id: 'strategy-center',
+    interactive: CENTER_INTERACTIVE,
     level: '进阶',
     mistake: { explanation: '1.a3?! 没争夺中心，也没有发展棋子。', label: '1.a3?!' },
     points: ['e4、d4、e5、d5 是中心四格。', '控制中心后棋子更容易转向两翼。', '可以占据中心，也可以远程控制。'],
@@ -343,6 +482,7 @@ export const LESSONS: ChessLesson[] = [
     category: 'endgames',
     fen: '8/4k3/8/4K3/4P3/8/8/8 w - - 0 1',
     id: 'endgame-king-pawn',
+    interactive: KING_PAWN_INTERACTIVE,
     level: '进阶',
     mistake: { explanation: '1.e5? 过早推兵会减少调整空间，兵更容易被挡住。', label: '1.e5?' },
     points: ['残局中王要主动。', '用对王争夺关键格。', '先改善王，再决定何时推兵。'],
@@ -388,6 +528,67 @@ export const LESSONS: ChessLesson[] = [
     why: '车不能控制斜线，所以必须依靠王封住逃跑格。',
   },
 ];
+
+function createRecommendedMoveInteractive(
+  lesson: ChessLesson,
+): InteractiveLesson | undefined {
+  const recommended = lesson.recommended;
+
+  if (!recommended) {
+    return undefined;
+  }
+
+  const game = new Chess(lesson.fen);
+  game.move({
+    from: recommended.from,
+    promotion: recommended.promotion,
+    to: recommended.to,
+  });
+  const opponent = game.isGameOver()
+    ? undefined
+    : {
+        difficulty: 'intermediate' as const,
+        mode: 'local-ai' as const,
+      };
+
+  return {
+    completion: `你已经亲手走出 ${recommended.label}。可以重来，比较提示与常见错误说明。`,
+    goal: `在棋盘上走出推荐着法 ${recommended.label}。`,
+    intro:
+      '先根据课程目标自己判断。走对后，本地 AI 会给出一个合法回应；以后可替换为 Stockfish。',
+    startFen: lesson.fen,
+    steps: [
+      {
+        acceptedMoves: [
+          {
+            from: recommended.from,
+            promotion: recommended.promotion,
+            to: recommended.to,
+          },
+        ],
+        explanation: recommended.explanation,
+        hint: `从 ${recommended.from} 出发，尝试走到 ${recommended.to}。`,
+        id: 'recommended-move',
+        incorrectFeedback:
+          lesson.mistake?.explanation ??
+          `这一步还没有完成本课目标，请寻找 ${recommended.label}。`,
+        instruction: `请走出 ${recommended.label}，并观察它如何完成本课目标。`,
+        opponent,
+      },
+    ],
+  };
+}
+
+export const LESSONS: ChessLesson[] = LESSON_CATALOG.map((lesson) => {
+  if (lesson.interactive || !lesson.recommended) {
+    return lesson;
+  }
+
+  return {
+    ...lesson,
+    interactive: createRecommendedMoveInteractive(lesson),
+  };
+});
 
 const ADVANCED_CATEGORIES = new Set<LessonCategory>([
   'openings',

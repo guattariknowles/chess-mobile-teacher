@@ -24,6 +24,8 @@
     "src/game/gameRecord.test.ts",
     "src/game/localAi.ts",
     "src/game/localAi.test.ts",
+    "src/game/lessonRuntime.ts",
+    "src/game/lessonRuntime.test.ts",
     "src/game/series.ts",
     "src/game/series.test.ts",
     "src/game/userProfile.ts",

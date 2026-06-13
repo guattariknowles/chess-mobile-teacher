@@ -149,10 +149,16 @@ function getStatus(chess: Chess): GameStatus {
 }
 
 export class ChessGame {
+  private readonly allowMovesAfterGameOver: boolean;
   private readonly chess: Chess;
   private initialFen?: string;
 
-  constructor(fen?: string) {
+  constructor(
+    fen?: string,
+    options: { allowMovesAfterGameOver?: boolean } = {},
+  ) {
+    this.allowMovesAfterGameOver =
+      options.allowMovesAfterGameOver ?? false;
     this.initialFen = fen;
     this.chess = new Chess(fen);
   }
@@ -170,7 +176,7 @@ export class ChessGame {
   }
 
   getLegalMoves(square: Square): LegalMove[] {
-    if (this.chess.isGameOver()) {
+    if (this.chess.isGameOver() && !this.allowMovesAfterGameOver) {
       return [];
     }
 
@@ -261,7 +267,7 @@ export class ChessGame {
     to: Square,
     promotion?: PromotionPiece,
   ): MoveAttempt {
-    if (this.chess.isGameOver()) {
+    if (this.chess.isGameOver() && !this.allowMovesAfterGameOver) {
       return {
         reason: 'game_over',
         snapshot: this.getSnapshot(),

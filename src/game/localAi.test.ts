@@ -132,6 +132,42 @@ test('AI returns null when the position has no legal move', () => {
   assert.equal(move, null);
 });
 
+test('AI only chooses from lesson-approved legal moves when constrained', () => {
+  const chess = new Chess();
+  chess.move({ from: 'd2', to: 'd4' });
+  const move = chooseAiMove(
+    chess.fen(),
+    'intermediate',
+    () => 0.5,
+    [{ from: 'g8', to: 'f6' }],
+  );
+
+  assert.equal(move?.from, 'g8');
+  assert.equal(move?.to, 'f6');
+});
+
+test('AI returns null when no constrained move is legal', () => {
+  const chess = new Chess();
+  chess.move({ from: 'e2', to: 'e4' });
+  const move = chooseAiMove(
+    chess.fen(),
+    'beginner',
+    () => 0,
+    [{ from: 'e7', to: 'e5' }],
+  );
+
+  assert.equal(move?.from, 'e7');
+  assert.equal(move?.to, 'e5');
+
+  const unavailable = chooseAiMove(
+    chess.fen(),
+    'beginner',
+    () => 0,
+    [{ from: 'e7', to: 'e4' }],
+  );
+  assert.equal(unavailable, null);
+});
+
 test('intermediate AI uses randomness to break equal-score ties', () => {
   const fen = new Chess().fen();
   const first = chooseAiMove(fen, 'intermediate', () => 0);

@@ -15,6 +15,12 @@ export type AiGameParticipant = {
   profileId?: string;
 };
 
+export type AiMoveConstraint = {
+  from: Move['from'];
+  promotion?: PromotionPiece;
+  to: Move['to'];
+};
+
 const AI_NAMES: Record<AiDifficulty, string> = {
   beginner: '初级 AI',
   intermediate: '中级 AI',
@@ -109,9 +115,21 @@ export function chooseAiMove(
   fen: string,
   difficulty: AiDifficulty,
   random: () => number = Math.random,
+  allowedMoves?: AiMoveConstraint[],
 ): LegalMove | null {
   const chess = new Chess(fen);
-  const moves = chess.moves({ verbose: true });
+  const legalMoves = chess.moves({ verbose: true });
+  const moves = allowedMoves
+    ? legalMoves.filter((move) =>
+        allowedMoves.some(
+          (allowed) =>
+            allowed.from === move.from &&
+            allowed.to === move.to &&
+            (allowed.promotion === undefined ||
+              allowed.promotion === move.promotion),
+        ),
+      )
+    : legalMoves;
 
   if (moves.length === 0) {
     return null;

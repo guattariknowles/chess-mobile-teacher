@@ -42,3 +42,30 @@ test('advanced lessons explain a recommendation and a common mistake', () => {
     ),
   );
 });
+
+test('stage seven keeps all lessons and makes every move-based lesson interactive', () => {
+  const interactive = LESSONS.filter((lesson) => lesson.interactive);
+  const staticLessons = LESSONS.filter((lesson) => !lesson.interactive);
+
+  assert.equal(LESSONS.length, 31);
+  assert.equal(interactive.length, 26);
+  assert.deepEqual(
+    staticLessons.map((lesson) => lesson.id),
+    [
+      'board-coordinates',
+      'checkmate',
+      'draw',
+      'clock-basics',
+      'pgn-basics',
+    ],
+  );
+  assert.ok(
+    interactive.every(
+      (lesson) =>
+        lesson.interactive &&
+        lesson.interactive.steps.length > 0 &&
+        lesson.interactive.goal.trim() &&
+        lesson.recommended,
+    ),
+  );
+});

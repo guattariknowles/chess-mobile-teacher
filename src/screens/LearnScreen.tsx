@@ -18,6 +18,7 @@ import {
   LESSONS,
 } from '../data/lessons/lessonCatalog';
 import { ChessGame } from '../game/chessState';
+import { InteractiveLessonScreen } from './InteractiveLessonScreen';
 
 type LearnScreenProps = {
   onBack: () => void;
@@ -34,12 +35,28 @@ export function LearnScreen({ onBack }: LearnScreenProps) {
   const [category, setCategory] = useState<LessonCategory>('basics');
   const [selectedLesson, setSelectedLesson] =
     useState<ChessLesson | null>(null);
+  const [interactiveLesson, setInteractiveLesson] =
+    useState<ChessLesson | null>(null);
+
+  if (interactiveLesson) {
+    return (
+      <InteractiveLessonScreen
+        lesson={interactiveLesson}
+        onBack={() => setInteractiveLesson(null)}
+      />
+    );
+  }
 
   if (selectedLesson) {
     return (
       <LessonDetail
         lesson={selectedLesson}
         onBack={() => setSelectedLesson(null)}
+        onStartInteractive={
+          selectedLesson.interactive
+            ? () => setInteractiveLesson(selectedLesson)
+            : undefined
+        }
       />
     );
   }
@@ -53,7 +70,7 @@ export function LearnScreen({ onBack }: LearnScreenProps) {
           <Text style={styles.outlineButtonText}>返回棋盘</Text>
         </Pressable>
         <View style={styles.headerText}>
-          <Text style={styles.eyebrow}>PART 5 · 离线课程</Text>
+          <Text style={styles.eyebrow}>PART 7 · 互动教学</Text>
           <Text style={styles.title}>学习国际象棋</Text>
           <Text style={styles.subtitle}>
             {LESSONS.length} 节原创课程，无需联网
@@ -65,17 +82,21 @@ export function LearnScreen({ onBack }: LearnScreenProps) {
         horizontal
         contentContainerStyle={styles.categoryBar}
         showsHorizontalScrollIndicator={false}
+        style={styles.categoryScroller}
       >
         {CATEGORIES.map((item) => (
           <Pressable
             key={item}
             onPress={() => setCategory(item)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: item === category }}
             style={[
               styles.categoryButton,
               item === category && styles.activeCategoryButton,
             ]}
           >
             <Text
+              maxFontSizeMultiplier={1.25}
               style={[
                 styles.categoryText,
                 item === category && styles.activeCategoryText,
@@ -83,7 +104,7 @@ export function LearnScreen({ onBack }: LearnScreenProps) {
             >
               {LESSON_CATEGORY_LABELS[item]}
             </Text>
-            <Text style={styles.categoryCount}>
+            <Text maxFontSizeMultiplier={1.25} style={styles.categoryCount}>
               {getLessonsByCategory(item).length} 节
             </Text>
           </Pressable>
@@ -94,12 +115,13 @@ export function LearnScreen({ onBack }: LearnScreenProps) {
         <Text style={styles.sectionTitle}>
           {LESSON_CATEGORY_LABELS[category]}
         </Text>
-        <Text style={styles.sectionHint}>点击查看棋盘示例和原因</Text>
+        <Text style={styles.sectionHint}>查看说明或开始互动练习</Text>
       </View>
 
       <ScrollView
         contentContainerStyle={styles.lessonList}
         showsVerticalScrollIndicator={false}
+        style={styles.lessonScroller}
       >
         {lessons.map((lesson, index) => (
           <Pressable
@@ -134,9 +156,11 @@ export function LearnScreen({ onBack }: LearnScreenProps) {
 function LessonDetail({
   lesson,
   onBack,
+  onStartInteractive,
 }: {
   lesson: ChessLesson;
   onBack: () => void;
+  onStartInteractive?: () => void;
 }) {
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(
     null,
@@ -180,6 +204,23 @@ function LessonDetail({
         </View>
 
         <Text style={styles.detailSummary}>{lesson.summary}</Text>
+
+        {onStartInteractive ? (
+          <View style={styles.interactiveCallout}>
+            <View style={styles.interactiveCalloutText}>
+              <Text style={styles.interactiveLabel}>可互动练习</Text>
+              <Text style={styles.interactiveDescription}>
+                在棋盘上亲自走棋，获得正确、错误和提示反馈。
+              </Text>
+            </View>
+            <Pressable
+              onPress={onStartInteractive}
+              style={styles.interactiveButton}
+            >
+              <Text style={styles.interactiveButtonText}>开始练习</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         <View style={styles.boardWrap}>
           <ChessBoard
@@ -297,15 +338,27 @@ const styles = StyleSheet.create({
   },
   title: { color: '#f4f1e8', fontSize: 24, fontWeight: '900', marginTop: 2 },
   subtitle: { color: '#8f978e', fontSize: 10, marginTop: 2 },
-  categoryBar: { gap: 8, paddingHorizontal: 16, paddingVertical: 14 },
+  categoryScroller: {
+    flexGrow: 0,
+    flexShrink: 0,
+    height: 82,
+  },
+  categoryBar: {
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 82,
+    paddingHorizontal: 16,
+  },
   categoryButton: {
+    alignSelf: 'center',
     backgroundColor: '#222722',
     borderColor: '#3a423a',
     borderRadius: 11,
     borderWidth: 1,
+    height: 58,
+    justifyContent: 'center',
     minWidth: 96,
     paddingHorizontal: 12,
-    paddingVertical: 9,
   },
   activeCategoryButton: { backgroundColor: '#6f4d25', borderColor: '#d49a43' },
   categoryText: { color: '#c7cdc4', fontSize: 12, fontWeight: '800' },
@@ -320,6 +373,7 @@ const styles = StyleSheet.create({
   sectionTitle: { color: '#f1eee5', fontSize: 18, fontWeight: '900' },
   sectionHint: { color: '#7f877f', fontSize: 9 },
   lessonList: { paddingBottom: 28, paddingHorizontal: 16, paddingTop: 10 },
+  lessonScroller: { flex: 1 },
   lessonCard: {
     alignItems: 'center',
     backgroundColor: '#242924',
@@ -355,6 +409,38 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: 12,
     paddingHorizontal: 16,
+  },
+  interactiveCallout: {
+    alignItems: 'center',
+    backgroundColor: '#302819',
+    borderColor: '#9d7138',
+    borderRadius: 11,
+    borderWidth: 1,
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 11,
+  },
+  interactiveCalloutText: { flex: 1, marginRight: 10 },
+  interactiveLabel: { color: '#efbd72', fontSize: 12, fontWeight: '900' },
+  interactiveDescription: {
+    color: '#c9c1ae',
+    fontSize: 10,
+    lineHeight: 15,
+    marginTop: 3,
+  },
+  interactiveButton: {
+    backgroundColor: '#7b572a',
+    borderColor: '#d49a43',
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+  },
+  interactiveButtonText: {
+    color: '#fff3df',
+    fontSize: 10,
+    fontWeight: '900',
   },
   boardWrap: { alignItems: 'center', paddingVertical: 14 },
   coordinateCard: {

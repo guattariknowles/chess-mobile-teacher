@@ -152,6 +152,16 @@ test('blocks moves after the game has ended', () => {
   assert.equal(game.getSnapshot().fen, before);
 });
 
+test('teaching mode can practice legal moves in an otherwise finished position', () => {
+  const game = new ChessGame(
+    '4k3/8/8/8/3N4/8/8/4K3 w - - 0 1',
+    { allowMovesAfterGameOver: true },
+  );
+  const result = game.move('d4', 'f5');
+
+  assert.equal(result.success, true);
+});
+
 test('exports and imports PGN without changing the final position', () => {
   const original = new ChessGame();
   original.move('e2', 'e4');
